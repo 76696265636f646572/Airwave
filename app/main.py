@@ -30,6 +30,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         ffmpeg_pipeline=ffmpeg_pipeline,
         chunk_size=settings.chunk_size,
         queue_poll_seconds=settings.queue_poll_seconds,
+        stats_log_seconds=settings.stream_stats_log_seconds,
     )
     playlist_service = PlaylistService(repository, yt_dlp_service)
     sonos_service = SonosService()

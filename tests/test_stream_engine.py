@@ -1,4 +1,5 @@
 from io import BytesIO
+from threading import Thread
 
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
@@ -9,12 +10,16 @@ from app.services.yt_dlp_service import ResolvedTrack
 class FakeProc:
     def __init__(self, payload: bytes) -> None:
         self.stdout = BytesIO(payload)
+        self.returncode = 0
 
     def terminate(self) -> None:
         return
 
     def wait(self, timeout: float | None = None) -> None:
         return
+
+    def poll(self):
+        return self.returncode
 
 
 class FakeFfmpeg:
@@ -47,9 +52,21 @@ def test_shared_hub_fan_out():
     hub = SharedMp3Hub()
     gen1 = hub.subscribe()
     gen2 = hub.subscribe()
+    received: list[bytes] = []
+
+    def _consume(gen):
+        received.append(next(gen))
+
+    t1 = Thread(target=_consume, args=(gen1,))
+    t2 = Thread(target=_consume, args=(gen2,))
+    t1.start()
+    t2.start()
     hub.publish(b"chunk")
-    assert next(gen1) == b"chunk"
-    assert next(gen2) == b"chunk"
+    t1.join(timeout=1)
+    t2.join(timeout=1)
+    assert received == [b"chunk", b"chunk"]
+    gen1.close()
+    gen2.close()
 
 
 def test_stream_engine_playback_lifecycle(tmp_path):

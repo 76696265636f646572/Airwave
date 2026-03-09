@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     mp3_bitrate: str = "128k"
     chunk_size: int = 2048
     queue_poll_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
+    stream_stats_log_seconds: float = Field(default=15.0, ge=1.0, le=300.0)
     history_limit: int = 50
 
     @property

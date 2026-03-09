@@ -234,6 +234,11 @@ class Repository:
             count = session.scalar(select(func.count(QueueItem.id)).where(QueueItem.status == QueueStatus.queued))
             return bool(count and count > 0)
 
+    def queued_count(self) -> int:
+        with self.session() as session:
+            count = session.scalar(select(func.count(QueueItem.id)).where(QueueItem.status == QueueStatus.queued))
+            return int(count or 0)
+
     def dequeue_next(self) -> QueueItem | None:
         with self._queue_lock, self.session() as session:
             next_item = session.scalar(

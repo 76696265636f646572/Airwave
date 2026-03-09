@@ -11,14 +11,76 @@ from app.main import create_app
 
 @dataclass
 class FakePlaylistService:
+    next_playlist_id: int = 100
+
     def add_url(self, url: str) -> dict:
-        return {"type": "video", "count": 1, "title": f"added:{url}"}
+        return {"type": "video", "count": 1, "title": f"added:{url}", "item_ids": [1]}
 
     def preview_playlist(self, url: str):
         return SimpleNamespace(source_url=url, title="preview", channel="chan", entries=[{"id": "1"}, {"id": "2"}])
 
     def import_playlist(self, url: str) -> dict:
-        return {"type": "playlist", "count": 2, "title": f"imported:{url}"}
+        return {"type": "playlist", "count": 2, "title": f"imported:{url}", "playlist_id": 10, "item_ids": [2, 3]}
+
+    def list_playlists(self):
+        return [
+            {
+                "id": 10,
+                "title": "Imported Playlist",
+                "channel": "chan",
+                "source_url": "https://www.youtube.com/playlist?list=pl",
+                "entry_count": 2,
+                "kind": "imported",
+            }
+        ]
+
+    def create_custom_playlist(self, title: str) -> dict:
+        self.next_playlist_id += 1
+        return {
+            "id": self.next_playlist_id,
+            "title": title,
+            "channel": "Custom",
+            "source_url": f"custom://{self.next_playlist_id}",
+            "entry_count": 0,
+            "kind": "custom",
+        }
+
+    def list_playlist_entries(self, playlist_id: int):
+        _ = playlist_id
+        return [
+            {
+                "id": 501,
+                "playlist_id": 10,
+                "source_url": "https://youtube.com/watch?v=1",
+                "normalized_url": "https://youtube.com/watch?v=1",
+                "title": "Track 1",
+                "channel": "chan",
+                "duration_seconds": 60,
+                "thumbnail_url": None,
+                "position": 1,
+            }
+        ]
+
+    def add_item_to_playlist(self, playlist_id: int, url: str) -> dict:
+        if playlist_id != 10:
+            raise ValueError("Playlist not found")
+        return {
+            "id": 502,
+            "playlist_id": playlist_id,
+            "title": f"added:{url}",
+            "source_url": url,
+            "position": 2,
+        }
+
+    def queue_playlist(self, playlist_id: int) -> dict:
+        if playlist_id != 10:
+            return {"ok": True, "count": 0, "item_ids": []}
+        return {"ok": True, "count": 2, "item_ids": [11, 12]}
+
+    def queue_playlist_entry(self, entry_id: int) -> dict:
+        if entry_id != 501:
+            raise ValueError("Playlist entry not found")
+        return {"ok": True, "count": 1, "item_ids": [13]}
 
 
 @dataclass
@@ -42,10 +104,46 @@ class FakeEngine:
 class FakeSonosService:
     def discover_speakers(self, timeout: int = 2):
         _ = timeout
-        return [SimpleNamespace(ip="192.168.1.10", name="Living Room")]
+        return [
+            SimpleNamespace(
+                ip="192.168.1.10",
+                name="Living Room",
+                uid="RINCON_123",
+                coordinator_uid="RINCON_123",
+                group_member_uids=["RINCON_123", "RINCON_456"],
+                volume=25,
+                is_coordinator=True,
+            )
+        ]
 
     def play_stream(self, speaker_ip: str, stream_url: str) -> None:
         self.last_play = (speaker_ip, stream_url)
+
+    def group_speaker(self, coordinator_ip: str, member_ip: str) -> None:
+        self.last_group = (coordinator_ip, member_ip)
+
+    def ungroup_speaker(self, speaker_ip: str) -> None:
+        self.last_ungroup = speaker_ip
+
+    def set_volume(self, speaker_ip: str, volume: int) -> None:
+        self.last_volume = (speaker_ip, volume)
+
+
+@dataclass
+class FakeYtDlpService:
+    def search_videos(self, query: str, limit: int = 10):
+        _ = limit
+        return [
+            {
+                "id": "v1",
+                "source_url": "https://www.youtube.com/watch?v=v1",
+                "normalized_url": "https://www.youtube.com/watch?v=v1",
+                "title": f"{query} result",
+                "channel": "chan",
+                "duration_seconds": 120,
+                "thumbnail_url": None,
+            }
+        ]
 
 
 def _build_test_client(tmp_path):
@@ -64,15 +162,17 @@ def test_browser_root_and_static_assets(tmp_path):
     with client:
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "Shared stream" in resp.text
+        assert '<div id="app"' in resp.text
+        assert "/static/dist/app.css" in resp.text
+        assert "/static/dist/app.js" in resp.text
 
-        css = client.get("/static/css/styles.css")
+        css = client.get("/static/dist/app.css")
         assert css.status_code == 200
-        assert "background" in css.text
+        assert len(css.text) > 0
 
-        js = client.get("/static/js/app.js")
+        js = client.get("/static/dist/app.js")
         assert js.status_code == 200
-        assert "refreshAll" in js.text
+        assert len(js.text) > 0
 
 
 def test_queue_playlist_and_history_endpoints(tmp_path):
@@ -102,6 +202,80 @@ def test_queue_playlist_and_history_endpoints(tmp_path):
         assert isinstance(history_resp.json(), list)
 
 
+def test_play_now_endpoint_triggers_skip(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        fake_engine = FakeEngine()
+        app.state.playlist_service = FakePlaylistService()
+        app.state.stream_engine = fake_engine
+
+        play_now = client.post("/queue/play-now", json={"url": "https://www.youtube.com/watch?v=abc"})
+        assert play_now.status_code == 200
+        payload = play_now.json()
+        assert payload["ok"] is True
+        assert payload["item_ids"] == [1]
+        assert fake_engine.skipped is True
+
+
+def test_playlist_library_endpoints(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        app.state.playlist_service = FakePlaylistService()
+
+        playlists = client.get("/playlists")
+        assert playlists.status_code == 200
+        listed = playlists.json()
+        assert len(listed) == 1
+        assert listed[0]["id"] == 10
+
+        fetched = client.get("/playlists/10")
+        assert fetched.status_code == 200
+        assert fetched.json()["title"] == "Imported Playlist"
+
+        missing_playlist = client.get("/playlists/999")
+        assert missing_playlist.status_code == 404
+
+        created = client.post("/playlists/custom", json={"title": "My Mix"})
+        assert created.status_code == 200
+        assert created.json()["title"] == "My Mix"
+        assert created.json()["kind"] == "custom"
+
+        entries = client.get("/playlists/10/entries")
+        assert entries.status_code == 200
+        assert entries.json()[0]["id"] == 501
+
+        added = client.post("/playlists/10/entries", json={"url": "https://www.youtube.com/watch?v=z"})
+        assert added.status_code == 200
+        assert added.json()["playlist_id"] == 10
+
+        missing_add = client.post("/playlists/999/entries", json={"url": "https://www.youtube.com/watch?v=z"})
+        assert missing_add.status_code == 404
+
+        queued_playlist = client.post("/playlists/10/queue")
+        assert queued_playlist.status_code == 200
+        assert queued_playlist.json()["count"] == 2
+
+        queued_entry = client.post("/playlists/entries/501/queue")
+        assert queued_entry.status_code == 200
+        assert queued_entry.json()["count"] == 1
+
+        missing_entry_queue = client.post("/playlists/entries/999/queue")
+        assert missing_entry_queue.status_code == 404
+
+
+def test_search_endpoint(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        app.state.yt_dlp_service = FakeYtDlpService()
+
+        search = client.get("/search/youtube?q=lofi&limit=5")
+        assert search.status_code == 200
+        payload = search.json()
+        assert payload["query"] == "lofi"
+        assert payload["count"] == 1
+        assert payload["results"][0]["id"] == "v1"
+
+
 def test_stream_endpoint_returns_bytes_without_hanging(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:
@@ -124,9 +298,27 @@ def test_sonos_endpoints(tmp_path):
         payload = speakers.json()
         assert len(payload) == 1
         assert payload[0]["name"] == "Living Room"
+        assert payload[0]["uid"] == "RINCON_123"
+        assert payload[0]["group_member_uids"] == ["RINCON_123", "RINCON_456"]
+        assert payload[0]["is_coordinator"] is True
 
         play = client.post("/sonos/play", json={"speaker_ip": "192.168.1.10"})
         assert play.status_code == 200
         assert play.json()["ok"] is True
         assert fake_sonos.last_play[0] == "192.168.1.10"
         assert fake_sonos.last_play[1].endswith("/stream/live.mp3")
+
+        group = client.post("/sonos/group", json={"coordinator_ip": "192.168.1.10", "member_ip": "192.168.1.11"})
+        assert group.status_code == 200
+        assert group.json()["ok"] is True
+        assert fake_sonos.last_group == ("192.168.1.10", "192.168.1.11")
+
+        ungroup = client.post("/sonos/ungroup", json={"speaker_ip": "192.168.1.11"})
+        assert ungroup.status_code == 200
+        assert ungroup.json()["ok"] is True
+        assert fake_sonos.last_ungroup == "192.168.1.11"
+
+        volume = client.post("/sonos/volume", json={"speaker_ip": "192.168.1.10", "volume": 33})
+        assert volume.status_code == 200
+        assert volume.json()["ok"] is True
+        assert fake_sonos.last_volume == ("192.168.1.10", 33)

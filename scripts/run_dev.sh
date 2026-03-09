@@ -20,4 +20,4 @@ if [[ ! -f "app/static/dist/app.js" ]]; then
 fi
 
 export PYTHONUNBUFFERED=1
-exec uvicorn app.main:create_app --factory --host "${MYTUBE_HOST:-0.0.0.0}" --port "${MYTUBE_PORT:-8000}" --reload
+exec uvicorn app.main:create_app --factory --host "${MYTUBE_HOST:-0.0.0.0}" --port "${MYTUBE_PORT:-8000}" --reload --no-access-log

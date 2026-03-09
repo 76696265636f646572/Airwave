@@ -70,6 +70,10 @@ class SharedMp3Hub:
                 except queue.Full:
                     continue
 
+    def subscriber_count(self) -> int:
+        with self._lock:
+            return len(self._clients)
+
 
 class StreamEngine:
     def __init__(
@@ -80,6 +84,7 @@ class StreamEngine:
         chunk_size: int = 4096,
         queue_poll_seconds: float = 1.0,
         playback_retry_count: int = 2,
+        stats_log_seconds: float = 15.0,
     ) -> None:
         self.repository = repository
         self.yt_dlp_service = yt_dlp_service
@@ -87,13 +92,21 @@ class StreamEngine:
         self.chunk_size = chunk_size
         self.queue_poll_seconds = queue_poll_seconds
         self.playback_retry_count = max(0, playback_retry_count)
+        self.stats_log_seconds = max(1.0, stats_log_seconds)
         self.state = PlaybackState()
         self.hub = SharedMp3Hub()
         self._stop_event = threading.Event()
         self._skip_event = threading.Event()
         self._worker: threading.Thread | None = None
+        self._stats_worker: threading.Thread | None = None
         self._process_lock = threading.Lock()
         self._active_process: subprocess.Popen[bytes] | None = None
+        self._stats_lock = threading.Lock()
+        self._total_bytes_streamed = 0
+        self._total_chunks_streamed = 0
+        self._tracks_completed = 0
+        self._tracks_failed = 0
+        self._tracks_skipped = 0
 
     def start(self) -> None:
         if self._worker and self._worker.is_alive():
@@ -101,12 +114,16 @@ class StreamEngine:
         self._stop_event.clear()
         self._worker = threading.Thread(target=self._run, daemon=True, name="stream-engine")
         self._worker.start()
+        self._stats_worker = threading.Thread(target=self._log_stats_loop, daemon=True, name="stream-engine-stats")
+        self._stats_worker.start()
 
     def stop(self) -> None:
         self._stop_event.set()
         self._terminate_active_process()
         if self._worker:
             self._worker.join(timeout=3)
+        if self._stats_worker:
+            self._stats_worker.join(timeout=3)
 
     def skip_current(self) -> None:
         self._skip_event.set()
@@ -129,6 +146,73 @@ class StreamEngine:
             "elapsed_seconds": elapsed_seconds,
             "progress_percent": progress_percent,
         }
+
+    def runtime_stats(self) -> dict[str, float | int | str | None]:
+        progress = self.playback_progress()
+        with self._stats_lock:
+            total_bytes_streamed = self._total_bytes_streamed
+            total_chunks_streamed = self._total_chunks_streamed
+            tracks_completed = self._tracks_completed
+            tracks_failed = self._tracks_failed
+            tracks_skipped = self._tracks_skipped
+        return {
+            "mode": self.state.mode.value,
+            "queued_count": self.repository.queued_count(),
+            "subscriber_count": self.hub.subscriber_count(),
+            "now_playing_id": self.state.now_playing_id,
+            "now_playing_title": self.state.now_playing_title,
+            "elapsed_seconds": progress["elapsed_seconds"],
+            "duration_seconds": progress["duration_seconds"],
+            "total_bytes_streamed": total_bytes_streamed,
+            "total_chunks_streamed": total_chunks_streamed,
+            "tracks_completed": tracks_completed,
+            "tracks_failed": tracks_failed,
+            "tracks_skipped": tracks_skipped,
+        }
+
+    def _record_streamed_chunk(self, chunk_size: int) -> None:
+        with self._stats_lock:
+            self._total_chunks_streamed += 1
+            self._total_bytes_streamed += chunk_size
+
+    def _record_track_outcome(self, *, completed: bool = False, failed: bool = False, skipped: bool = False) -> None:
+        with self._stats_lock:
+            if completed:
+                self._tracks_completed += 1
+            if failed:
+                self._tracks_failed += 1
+            if skipped:
+                self._tracks_skipped += 1
+
+    def _log_stats_loop(self) -> None:
+        while not self._stop_event.wait(self.stats_log_seconds):
+            stats = self.runtime_stats()
+            track_label = (
+                f'{stats["now_playing_id"]}:{stats["now_playing_title"]}'
+                if stats["now_playing_id"] is not None
+                else "none"
+            )
+            elapsed_seconds = stats["elapsed_seconds"]
+            duration_seconds = stats["duration_seconds"]
+            if elapsed_seconds is None:
+                progress_label = "n/a"
+            elif duration_seconds:
+                progress_label = f"{elapsed_seconds:.1f}s/{duration_seconds}s"
+            else:
+                progress_label = f"{elapsed_seconds:.1f}s"
+            logger.info(
+                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s total_bytes=%s total_chunks=%s completed=%s skipped=%s failed=%s",
+                stats["mode"],
+                track_label,
+                progress_label,
+                stats["subscriber_count"],
+                stats["queued_count"],
+                stats["total_bytes_streamed"],
+                stats["total_chunks_streamed"],
+                stats["tracks_completed"],
+                stats["tracks_skipped"],
+                stats["tracks_failed"],
+            )
 
     def _set_active_process(self, process: subprocess.Popen[bytes] | None) -> None:
         with self._process_lock:
@@ -248,6 +332,7 @@ class StreamEngine:
                         if not chunk:
                             break
                         self.hub.publish(chunk)
+                        self._record_streamed_chunk(len(chunk))
                         attempt_chunks_sent += 1
                         attempt_bytes_sent += len(chunk)
                         total_chunks_sent += 1
@@ -274,6 +359,7 @@ class StreamEngine:
                                 attempt_chunks_sent,
                             )
                     self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.completed)
+                    self._record_track_outcome(completed=True)
                     logger.info(
                         "Track %s completed on attempt %s/%s (elapsed=%.2fs bytes=%s chunks=%s)",
                         queue_item.id,
@@ -318,6 +404,7 @@ class StreamEngine:
                 total_chunks_sent,
             )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.skipped)
+            self._record_track_outcome(skipped=True)
         except YtDlpError as exc:
             logger.warning(
                 "Failed resolving track %s (%s): %s",
@@ -326,6 +413,7 @@ class StreamEngine:
                 exc,
             )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
+            self._record_track_outcome(failed=True)
         except FfmpegError as exc:
             logger.error(
                 "ffmpeg error on track %s (%s): %s [bytes=%s chunks=%s]",
@@ -336,6 +424,7 @@ class StreamEngine:
                 total_chunks_sent,
             )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
+            self._record_track_outcome(failed=True)
         except Exception as exc:
             logger.exception(
                 "Playback failure on track %s (%s): %s",
@@ -344,3 +433,4 @@ class StreamEngine:
                 exc,
             )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
+            self._record_track_outcome(failed=True)
