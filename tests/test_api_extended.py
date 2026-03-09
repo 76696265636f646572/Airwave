@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.db.models import QueueStatus
+from app.db.repository import NewQueueItem
 from app.main import create_app
 
 
@@ -98,6 +100,14 @@ class FakeEngine:
             yield b"chunk-2"
 
         return _gen()
+
+    def playback_progress(self) -> dict:
+        return {
+            "duration_seconds": None,
+            "started_at": None,
+            "elapsed_seconds": None,
+            "progress_percent": None,
+        }
 
 
 @dataclass
@@ -343,3 +353,92 @@ def test_sonos_endpoints(tmp_path):
         assert volume.status_code == 200
         assert volume.json()["ok"] is True
         assert fake_sonos.last_volume == ("192.168.1.10", 33)
+
+
+def test_websocket_events_send_initial_snapshot_and_updates(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://youtube.com/watch?v=track1",
+                    normalized_url="https://youtube.com/watch?v=track1",
+                    source_type="video",
+                    title="Track 1",
+                    channel="chan",
+                )
+            ]
+        )[0]
+
+        with client.websocket_connect("/ws/events") as ws:
+            initial = ws.receive_json()
+            assert initial["type"] == "snapshot"
+            assert any(item["id"] == created.id for item in initial["queue"])
+
+            removed = client.delete(f"/queue/{created.id}")
+            assert removed.status_code == 200
+            assert removed.json()["ok"] is True
+
+            updated = ws.receive_json()
+            assert updated["type"] == "snapshot"
+            assert all(item["id"] != created.id for item in updated["queue"])
+
+
+def test_websocket_snapshot_serializes_history_datetimes(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://youtube.com/watch?v=history1",
+                    normalized_url="https://youtube.com/watch?v=history1",
+                    source_type="video",
+                    title="History Track",
+                    channel="chan",
+                )
+            ]
+        )[0]
+        app.state.repository.mark_playback_finished(created.id, status=QueueStatus.completed)
+
+        with client.websocket_connect("/ws/events") as ws:
+            payload = ws.receive_json()
+            assert payload["type"] == "snapshot"
+            assert isinstance(payload["history"], list)
+            assert payload["history"], "Expected at least one history entry in websocket snapshot"
+
+            entry = payload["history"][0]
+            assert isinstance(entry["started_at"], str)
+            assert isinstance(entry["finished_at"], str)
+
+
+def test_websocket_updates_are_broadcast_to_all_connected_clients(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://youtube.com/watch?v=broadcast1",
+                    normalized_url="https://youtube.com/watch?v=broadcast1",
+                    source_type="video",
+                    title="Broadcast Track",
+                    channel="chan",
+                )
+            ]
+        )[0]
+
+        with client.websocket_connect("/ws/events") as ws_a, client.websocket_connect("/ws/events") as ws_b:
+            initial_a = ws_a.receive_json()
+            initial_b = ws_b.receive_json()
+            assert initial_a["type"] == "snapshot"
+            assert initial_b["type"] == "snapshot"
+
+            removed = client.delete(f"/queue/{created.id}")
+            assert removed.status_code == 200
+            assert removed.json()["ok"] is True
+
+            update_a = ws_a.receive_json()
+            update_b = ws_b.receive_json()
+            assert update_a["type"] == "snapshot"
+            assert update_b["type"] == "snapshot"
+            assert all(item["id"] != created.id for item in update_a["queue"])
+            assert all(item["id"] != created.id for item in update_b["queue"])
