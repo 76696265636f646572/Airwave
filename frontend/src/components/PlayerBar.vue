@@ -1,5 +1,5 @@
 <template>
-  <footer class="sticky bottom-0 z-10 rounded-xl border border-neutral-700 bg-neutral-900 px-2 py-2 sm:px-3">
+  <footer class="sticky bottom-0 z-10 shrink-0 rounded-xl border border-neutral-700 bg-neutral-900 px-2 py-2 sm:px-3 md:static">
     <div class="grid items-center gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]">
       <div class="flex min-w-0 items-center gap-3">
         <div class="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-neutral-700 bg-neutral-800">

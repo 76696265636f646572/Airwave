@@ -1,6 +1,6 @@
 <template>
   <UApp :toaster="{ position: 'bottom-right' }">
-    <div class="min-h-screen bg-neutral-950 pb-24 text-neutral-100 p-3 flex flex-col gap-3 sm:pb-20">
+    <div class="h-dvh overflow-hidden bg-neutral-950 p-3 text-neutral-100 flex flex-col gap-3">
       <TopBar
         :search-text="searchText"
         :search-results="searchResults"
@@ -10,8 +10,9 @@
         @search-text-change="onSearchTextChange"
       />
 
-      <div class="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)_340px]">
+      <div class="min-h-0 flex-1 grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)_340px]">
         <SidebarPlaylists
+          class="h-full"
           :playlists="filteredPlaylists"
           :active-playlist-id="activePlaylistId"
           @create-playlist="onCreatePlaylist"
@@ -19,20 +20,22 @@
           @queue-playlist="onQueuePlaylist"
         />
 
-        <main class="min-h-0">
+        <main class="min-h-0 h-full">
           <RouterView />
         </main>
 
-        <aside class="min-h-0 flex flex-col gap-3">
+        <aside class="min-h-0 h-full flex flex-col gap-3">
           <template v-if="sidebarView === SIDEBAR_QUEUE_VIEW">
             <UTabs
               v-model="activeQueueTab"
               :items="queueSidebarTabs"
-              class="w-full min-h-0"
+              class="w-full min-h-0 h-full"
+              :ui="{ content: 'h-full min-h-0' }"
               :unmount-on-hide="false"
             >
               <template #queue>
                 <QueuePanel
+                  class="h-full"
                   :queue="filteredQueue"
                   :active-playlist-id="activePlaylistId"
                   @remove="onRemoveQueueItem"
@@ -42,13 +45,14 @@
               </template>
 
               <template #history>
-                <HistoryPanel :history="filteredHistory" @clear="onClearHistory" />
+                <HistoryPanel class="h-full" :history="filteredHistory" @clear="onClearHistory" />
               </template>
             </UTabs>
           </template>
 
           <SonosPanel
             v-else
+            class="h-full"
             :speakers="speakers"
             @refresh="onRefreshSonosManual"
             @play="playOnSpeaker"
