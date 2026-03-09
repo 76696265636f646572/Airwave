@@ -67,7 +67,7 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           REF_SLUG=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          REPO_LOWER="${{ toLower(github.repository) }}"
+          REPO_LOWER="mytube"
           echo "tags<<EOF" >> "$GITHUB_OUTPUT"
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "ghcr.io/${REPO_LOWER}:${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
