@@ -9,7 +9,7 @@ from typing import Iterator, Optional
 from sqlalchemy import Engine, Select, create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import Base, PlayHistory, Playlist, QueueItem, QueueStatus, Setting
+from app.db.models import Base, PlayHistory, Playlist, PlaylistEntry, QueueItem, QueueStatus, Setting
 
 
 @dataclass
@@ -22,6 +22,16 @@ class NewQueueItem:
     duration_seconds: int | None = None
     thumbnail_url: str | None = None
     playlist_id: int | None = None
+
+
+@dataclass
+class NewPlaylistEntry:
+    source_url: str
+    normalized_url: str
+    title: str | None = None
+    channel: str | None = None
+    duration_seconds: int | None = None
+    thumbnail_url: str | None = None
 
 
 class Repository:
@@ -104,6 +114,116 @@ class Repository:
             session.flush()
             return playlist
 
+    def create_custom_playlist(self, title: str) -> Playlist:
+        with self.session() as session:
+            playlist = Playlist(
+                source_url=f"custom://{datetime.now(timezone.utc).timestamp()}",
+                title=title,
+                channel="Custom",
+                entry_count=0,
+            )
+            session.add(playlist)
+            session.flush()
+            playlist.source_url = f"custom://{playlist.id}"
+            return playlist
+
+    def list_playlists(self) -> list[Playlist]:
+        with self.session() as session:
+            stmt = select(Playlist).order_by(Playlist.updated_at.desc())
+            return list(session.scalars(stmt).all())
+
+    def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
+        with self.session() as session:
+            return session.get(Playlist, playlist_id)
+
+    def replace_playlist_entries(self, playlist_id: int, entries: list[NewPlaylistEntry]) -> list[PlaylistEntry]:
+        with self.session() as session:
+            playlist = session.get(Playlist, playlist_id)
+            if playlist is None:
+                return []
+            session.query(PlaylistEntry).filter(PlaylistEntry.playlist_id == playlist_id).delete()
+            created: list[PlaylistEntry] = []
+            for idx, entry in enumerate(entries, start=1):
+                row = PlaylistEntry(
+                    playlist_id=playlist_id,
+                    source_url=entry.source_url,
+                    normalized_url=entry.normalized_url,
+                    title=entry.title,
+                    channel=entry.channel,
+                    duration_seconds=entry.duration_seconds,
+                    thumbnail_url=entry.thumbnail_url,
+                    position=idx,
+                )
+                session.add(row)
+                created.append(row)
+            playlist.entry_count = len(created)
+            session.flush()
+            return created
+
+    def add_playlist_entry(self, playlist_id: int, entry: NewPlaylistEntry) -> Optional[PlaylistEntry]:
+        with self.session() as session:
+            playlist = session.get(Playlist, playlist_id)
+            if playlist is None:
+                return None
+            next_pos = int(
+                session.scalar(select(func.max(PlaylistEntry.position)).where(PlaylistEntry.playlist_id == playlist_id)) or 0
+            ) + 1
+            row = PlaylistEntry(
+                playlist_id=playlist_id,
+                source_url=entry.source_url,
+                normalized_url=entry.normalized_url,
+                title=entry.title,
+                channel=entry.channel,
+                duration_seconds=entry.duration_seconds,
+                thumbnail_url=entry.thumbnail_url,
+                position=next_pos,
+            )
+            session.add(row)
+            playlist.entry_count = next_pos
+            session.flush()
+            return row
+
+    def list_playlist_entries(self, playlist_id: int) -> list[PlaylistEntry]:
+        with self.session() as session:
+            stmt = select(PlaylistEntry).where(PlaylistEntry.playlist_id == playlist_id).order_by(PlaylistEntry.position.asc())
+            return list(session.scalars(stmt).all())
+
+    def queue_playlist(self, playlist_id: int) -> list[QueueItem]:
+        entries = self.list_playlist_entries(playlist_id)
+        new_items = [
+            NewQueueItem(
+                source_url=entry.source_url,
+                normalized_url=entry.normalized_url,
+                source_type="playlist_item",
+                title=entry.title,
+                channel=entry.channel,
+                duration_seconds=entry.duration_seconds,
+                thumbnail_url=entry.thumbnail_url,
+                playlist_id=playlist_id,
+            )
+            for entry in entries
+        ]
+        return self.enqueue_items(new_items)
+
+    def queue_playlist_entry(self, entry_id: int) -> Optional[QueueItem]:
+        with self.session() as session:
+            entry = session.get(PlaylistEntry, entry_id)
+            if entry is None:
+                return None
+            playlist_id = entry.playlist_id
+            new_item = NewQueueItem(
+                source_url=entry.source_url,
+                normalized_url=entry.normalized_url,
+                source_type="playlist_item",
+                title=entry.title,
+                channel=entry.channel,
+                duration_seconds=entry.duration_seconds,
+                thumbnail_url=entry.thumbnail_url,
+                playlist_id=playlist_id,
+            )
+        queued = self.enqueue_items([new_item])
+        return queued[0] if queued else None
+
     def has_queued_items(self) -> bool:
         with self.session() as session:
             count = session.scalar(select(func.count(QueueItem.id)).where(QueueItem.status == QueueStatus.queued))
@@ -178,6 +298,9 @@ class Repository:
             for pos, queue_item in enumerate(queue_items, start=1):
                 queue_item.queue_position = pos
             return True
+
+    def move_item_to_front(self, item_id: int) -> bool:
+        return self.reorder_item(item_id=item_id, new_position=0)
 
     def get_item(self, item_id: int) -> Optional[QueueItem]:
         with self.session() as session:

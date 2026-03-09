@@ -15,3 +15,5 @@ mytube.db
 
 bin/ffmpeg
 bin/yt-dlp
+node_modules/
+app/static/dist/

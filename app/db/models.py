@@ -33,6 +33,7 @@ class Playlist(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     queue_items: Mapped[list["QueueItem"]] = relationship(back_populates="playlist")
+    entries: Mapped[list["PlaylistEntry"]] = relationship(back_populates="playlist")
 
 
 class QueueItem(Base):
@@ -56,6 +57,24 @@ class QueueItem(Base):
 
     playlist: Mapped[Optional[Playlist]] = relationship(back_populates="queue_items")
     history_entries: Mapped[list["PlayHistory"]] = relationship(back_populates="queue_item")
+
+
+class PlaylistEntry(Base):
+    __tablename__ = "playlist_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    playlist_id: Mapped[int] = mapped_column(ForeignKey("playlists.id"), nullable=False, index=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    channel: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    playlist: Mapped[Playlist] = relationship(back_populates="entries")
 
 
 class PlayHistory(Base):

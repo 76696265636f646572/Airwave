@@ -27,6 +27,9 @@ class PlaybackState:
     mode: PlaybackMode = PlaybackMode.idle
     now_playing_id: int | None = None
     now_playing_title: str | None = None
+    now_playing_duration_seconds: int | None = None
+    started_at_epoch_seconds: float | None = None
+    started_at_monotonic_seconds: float | None = None
 
 
 class SharedMp3Hub:
@@ -108,6 +111,21 @@ class StreamEngine:
     def subscribe(self) -> Generator[bytes, None, None]:
         return self.hub.subscribe()
 
+    def playback_progress(self) -> dict[str, float | int | None]:
+        elapsed_seconds: float | None = None
+        if self.state.mode == PlaybackMode.playing and self.state.started_at_monotonic_seconds is not None:
+            elapsed_seconds = max(0.0, time.monotonic() - self.state.started_at_monotonic_seconds)
+        progress_percent: float | None = None
+        if elapsed_seconds is not None and self.state.now_playing_duration_seconds:
+            if self.state.now_playing_duration_seconds > 0:
+                progress_percent = min(100.0, (elapsed_seconds / self.state.now_playing_duration_seconds) * 100.0)
+        return {
+            "duration_seconds": self.state.now_playing_duration_seconds,
+            "started_at": self.state.started_at_epoch_seconds,
+            "elapsed_seconds": elapsed_seconds,
+            "progress_percent": progress_percent,
+        }
+
     def _set_active_process(self, process: subprocess.Popen[bytes] | None) -> None:
         with self._process_lock:
             self._active_process = process
@@ -139,6 +157,9 @@ class StreamEngine:
         self.state.mode = PlaybackMode.idle
         self.state.now_playing_id = None
         self.state.now_playing_title = None
+        self.state.now_playing_duration_seconds = None
+        self.state.started_at_epoch_seconds = None
+        self.state.started_at_monotonic_seconds = None
         try:
             process = self.ffmpeg_pipeline.spawn_silence()
         except FfmpegError as exc:
@@ -172,6 +193,9 @@ class StreamEngine:
         self.state.mode = PlaybackMode.playing
         self.state.now_playing_id = queue_item.id
         self.state.now_playing_title = queue_item.title
+        self.state.now_playing_duration_seconds = queue_item.duration_seconds
+        self.state.started_at_epoch_seconds = time.time()
+        self.state.started_at_monotonic_seconds = time.monotonic()
         self._skip_event.clear()
         try:
             resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)

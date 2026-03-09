@@ -10,11 +10,14 @@ A WSL-friendly FastAPI application that exposes one shared live MP3 stream for a
    - `source .venv/bin/activate`
    - `python -m pip install --upgrade pip setuptools wheel`
    - `python -m pip install ".[dev]"`
-3. Install `yt-dlp` binary:
+3. Install frontend dependencies and build local Vue assets:
+   - `npm install`
+   - `npm run build`
+4. Install `yt-dlp` binary:
    - `./scripts/setup_yt_dlp.sh`
-4. (Optional) install `ffmpeg` manually:
+5. (Optional) install `ffmpeg` manually:
    - `./scripts/setup_ffmpeg.sh`
-5. Start the app:
+6. Start the app:
    - `./scripts/run_dev.sh`
 
 Open `http://127.0.0.1:8000`.

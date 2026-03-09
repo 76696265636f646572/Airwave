@@ -9,5 +9,15 @@ if [[ -f ".venv/bin/activate" ]]; then
   source ".venv/bin/activate"
 fi
 
+if [[ ! -f "app/static/dist/app.js" ]]; then
+  if command -v npm >/dev/null 2>&1; then
+    echo "Building frontend assets..."
+    npm run build
+  else
+    echo "Frontend bundle missing and npm is not available." >&2
+    exit 1
+  fi
+fi
+
 export PYTHONUNBUFFERED=1
 exec uvicorn app.main:create_app --factory --host "${MYTUBE_HOST:-0.0.0.0}" --port "${MYTUBE_PORT:-8000}" --reload

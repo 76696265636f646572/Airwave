@@ -118,3 +118,27 @@ class YtDlpService:
             channel=data.get("uploader") or data.get("channel"),
             entries=entries,
         )
+
+    def search_videos(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        bounded_limit = max(1, min(limit, 25))
+        payload = self._run_json("--flat-playlist", "--skip-download", "-J", f"ytsearch{bounded_limit}:{query}")
+        results: list[dict[str, Any]] = []
+        for entry in payload.get("entries", []):
+            if not isinstance(entry, dict):
+                continue
+            video_id = entry.get("id")
+            if not video_id:
+                continue
+            watch_url = f"https://www.youtube.com/watch?v={video_id}"
+            results.append(
+                {
+                    "id": video_id,
+                    "source_url": watch_url,
+                    "normalized_url": watch_url,
+                    "title": entry.get("title"),
+                    "channel": entry.get("uploader") or entry.get("channel"),
+                    "duration_seconds": entry.get("duration"),
+                    "thumbnail_url": None,
+                }
+            )
+        return results

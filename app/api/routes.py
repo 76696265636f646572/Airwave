@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from app.services.stream_engine import StreamEngine
 
@@ -25,6 +25,24 @@ class SonosPlayRequest(BaseModel):
     speaker_ip: str
 
 
+class SonosGroupRequest(BaseModel):
+    coordinator_ip: str
+    member_ip: str
+
+
+class SonosUngroupRequest(BaseModel):
+    speaker_ip: str
+
+
+class SonosVolumeRequest(BaseModel):
+    speaker_ip: str
+    volume: int = Field(ge=0, le=100)
+
+
+class CreateCustomPlaylistRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 def _services(request: Request) -> dict[str, Any]:
     return {
         "repo": request.app.state.repository,
@@ -32,6 +50,7 @@ def _services(request: Request) -> dict[str, Any]:
         "engine": request.app.state.stream_engine,
         "settings": request.app.state.settings,
         "sonos": request.app.state.sonos_service,
+        "yt_dlp": request.app.state.yt_dlp_service,
     }
 
 
@@ -62,11 +81,13 @@ def health(request: Request) -> dict[str, str]:
 def state(request: Request) -> dict[str, Any]:
     services = _services(request)
     engine: StreamEngine = services["engine"]
+    progress = engine.playback_progress()
     return {
         "mode": engine.state.mode.value,
         "now_playing_id": engine.state.now_playing_id,
         "now_playing_title": engine.state.now_playing_title,
         "stream_url": _stream_url(request),
+        **progress,
     }
 
 
@@ -81,6 +102,10 @@ def list_queue(request: Request) -> list[dict[str, Any]]:
             "status": item.status.value,
             "queue_position": item.queue_position,
             "source_type": item.source_type,
+            "channel": item.channel,
+            "duration_seconds": item.duration_seconds,
+            "thumbnail_url": item.thumbnail_url,
+            "playlist_id": item.playlist_id,
         }
         for item in queue
     ]
@@ -89,6 +114,17 @@ def list_queue(request: Request) -> list[dict[str, Any]]:
 @router.post("/queue/add")
 def add_to_queue(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
     result = _services(request)["playlist"].add_url(str(payload.url))
+    return {"ok": True, **result}
+
+
+@router.post("/queue/play-now")
+def play_now(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
+    services = _services(request)
+    result = services["playlist"].add_url(str(payload.url))
+    item_ids = result.get("item_ids") or []
+    if item_ids:
+        services["repo"].move_item_to_front(item_ids[0])
+    services["engine"].skip_current()
     return {"ok": True, **result}
 
 
@@ -155,6 +191,61 @@ def playlist_import(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
     return {"ok": True, **result}
 
 
+@router.get("/playlists")
+def playlists(request: Request) -> list[dict[str, Any]]:
+    return _services(request)["playlist"].list_playlists()
+
+
+@router.post("/playlists/custom")
+def create_custom_playlist(payload: CreateCustomPlaylistRequest, request: Request) -> dict[str, Any]:
+    return _services(request)["playlist"].create_custom_playlist(payload.title.strip())
+
+
+@router.get("/playlists/{playlist_id}")
+def get_playlist(playlist_id: int, request: Request) -> dict[str, Any]:
+    playlists = _services(request)["playlist"].list_playlists()
+    match = next((playlist for playlist in playlists if playlist["id"] == playlist_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    return match
+
+
+@router.get("/playlists/{playlist_id}/entries")
+def playlist_entries(playlist_id: int, request: Request) -> list[dict[str, Any]]:
+    return _services(request)["playlist"].list_playlist_entries(playlist_id)
+
+
+@router.post("/playlists/{playlist_id}/entries")
+def add_playlist_entry(playlist_id: int, payload: AddUrlRequest, request: Request) -> dict[str, Any]:
+    try:
+        return _services(request)["playlist"].add_item_to_playlist(playlist_id=playlist_id, url=str(payload.url))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/playlists/{playlist_id}/queue")
+def queue_playlist(playlist_id: int, request: Request) -> dict[str, Any]:
+    return _services(request)["playlist"].queue_playlist(playlist_id)
+
+
+@router.post("/playlists/entries/{entry_id}/queue")
+def queue_playlist_entry(entry_id: int, request: Request) -> dict[str, Any]:
+    try:
+        return _services(request)["playlist"].queue_playlist_entry(entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/search/youtube")
+def search_youtube(
+    request: Request,
+    q: str = Query(min_length=1),
+    limit: int = Query(default=10, ge=1, le=25),
+) -> dict[str, Any]:
+    results = _services(request)["yt_dlp"].search_videos(query=q, limit=limit)
+    return {"query": q, "count": len(results), "results": results}
+
+
 @router.get("/stream/live.mp3")
 def stream_live(request: Request) -> StreamingResponse:
     engine = _services(request)["engine"]
@@ -162,13 +253,42 @@ def stream_live(request: Request) -> StreamingResponse:
 
 
 @router.get("/sonos/speakers")
-def sonos_speakers(request: Request) -> list[dict[str, str]]:
+def sonos_speakers(request: Request) -> list[dict[str, Any]]:
     speakers = _services(request)["sonos"].discover_speakers()
-    return [{"ip": speaker.ip, "name": speaker.name} for speaker in speakers]
+    return [
+        {
+            "ip": speaker.ip,
+            "name": speaker.name,
+            "uid": speaker.uid,
+            "coordinator_uid": speaker.coordinator_uid,
+            "group_member_uids": speaker.group_member_uids,
+            "volume": speaker.volume,
+            "is_coordinator": speaker.is_coordinator,
+        }
+        for speaker in speakers
+    ]
 
 
 @router.post("/sonos/play")
 def sonos_play(payload: SonosPlayRequest, request: Request) -> dict[str, bool]:
     services = _services(request)
     services["sonos"].play_stream(payload.speaker_ip, _stream_url(request))
+    return {"ok": True}
+
+
+@router.post("/sonos/group")
+def sonos_group(payload: SonosGroupRequest, request: Request) -> dict[str, bool]:
+    _services(request)["sonos"].group_speaker(payload.coordinator_ip, payload.member_ip)
+    return {"ok": True}
+
+
+@router.post("/sonos/ungroup")
+def sonos_ungroup(payload: SonosUngroupRequest, request: Request) -> dict[str, bool]:
+    _services(request)["sonos"].ungroup_speaker(payload.speaker_ip)
+    return {"ok": True}
+
+
+@router.post("/sonos/volume")
+def sonos_volume(payload: SonosVolumeRequest, request: Request) -> dict[str, bool]:
+    _services(request)["sonos"].set_volume(payload.speaker_ip, payload.volume)
     return {"ok": True}
