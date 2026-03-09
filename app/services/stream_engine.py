@@ -17,6 +17,19 @@ from app.services.yt_dlp_service import YtDlpError, YtDlpService
 logger = logging.getLogger(__name__)
 
 
+def _stderr_indicates_stream_failure(stderr_text: str) -> bool:
+    normalized = stderr_text.lower()
+    failure_markers = (
+        "input/output error",
+        "read error",
+        "error in the pull function",
+        "session has been invalidated",
+        "connection reset",
+        "end of file",
+    )
+    return any(marker in normalized for marker in failure_markers)
+
+
 class PlaybackMode(str, Enum):
     idle = "idle"
     playing = "playing"
@@ -309,12 +322,27 @@ class StreamEngine:
         total_attempts = self.playback_retry_count + 1
         total_chunks_sent = 0
         total_bytes_sent = 0
+        resolved_duration_seconds: int | None = None
+        probed_duration_seconds: float | None = None
         try:
             for attempt in range(1, total_attempts + 1):
                 if self._stop_event.is_set():
                     raise InterruptedError("Playback stopped")
                 try:
                     resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+                    resolved_duration_seconds = resolved.duration_seconds
+                    probe_source = getattr(self.ffmpeg_pipeline, "probe_source", None)
+                    try:
+                        probe = probe_source(resolved.stream_url) if callable(probe_source) else None
+                        if probe is None:
+                            raise AttributeError("probe_source unavailable")
+                        probed_duration_seconds = (
+                            float(probe["duration_seconds"]) if probe["duration_seconds"] is not None else None
+                        )
+                    except FfmpegError:
+                        probed_duration_seconds = None
+                    except AttributeError:
+                        probed_duration_seconds = None
                     self.repository.mark_item_resolved(queue_item.id, resolved.stream_url)
                     if resolved.thumbnail_url:
                         self.state.now_playing_thumbnail_url = resolved.thumbnail_url
@@ -330,6 +358,12 @@ class StreamEngine:
                             raise InterruptedError("Track skipped")
                         chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
                         if not chunk:
+                            stderr_pipe = getattr(process, "stderr", None)
+                            stderr_snapshot = (
+                                stderr_pipe.read().decode("utf-8", errors="replace").strip()
+                                if stderr_pipe is not None
+                                else ""
+                            )
                             break
                         self.hub.publish(chunk)
                         self._record_streamed_chunk(len(chunk))
@@ -344,9 +378,21 @@ class StreamEngine:
                         raise InterruptedError("Track skipped")
 
                     return_code = self._process_return_code(process)
+                    elapsed_seconds = max(0.0, time.monotonic() - attempt_started_at)
+                    expected_duration_seconds = (
+                        probed_duration_seconds or float(resolved_duration_seconds or 0) or float(queue_item.duration_seconds or 0)
+                    )
+                    stderr_text = stderr_snapshot if "stderr_snapshot" in locals() else ""
+                    premature_end = bool(
+                        expected_duration_seconds
+                        and expected_duration_seconds > 30
+                        and elapsed_seconds < expected_duration_seconds * 0.9
+                    )
+                    stderr_failure = _stderr_indicates_stream_failure(stderr_text)
                     if return_code != 0:
                         raise FfmpegError(f"ffmpeg exited with status {return_code}")
-                    elapsed_seconds = max(0.0, time.monotonic() - attempt_started_at)
+                    if premature_end and stderr_failure:
+                        raise FfmpegError("ffmpeg ended early after upstream stream failure")
                     if queue_item.duration_seconds and queue_item.duration_seconds > 30:
                         if elapsed_seconds < queue_item.duration_seconds * 0.2:
                             logger.warning(

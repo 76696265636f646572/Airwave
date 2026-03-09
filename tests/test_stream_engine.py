@@ -8,9 +8,10 @@ from app.services.yt_dlp_service import ResolvedTrack
 
 
 class FakeProc:
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, *, returncode: int = 0, stderr: bytes = b"") -> None:
         self.stdout = BytesIO(payload)
-        self.returncode = 0
+        self.stderr = BytesIO(stderr)
+        self.returncode = returncode
 
     def terminate(self) -> None:
         return
@@ -33,6 +34,21 @@ class FakeFfmpeg:
     @staticmethod
     def read_chunk(stdout, chunk_size: int) -> bytes:
         return stdout.read(chunk_size)
+
+    @staticmethod
+    def probe_source(source_url: str) -> dict[str, str | float | None]:
+        _ = source_url
+        return {"duration_seconds": 120.0, "bit_rate": 128000.0, "format_name": "mp3"}
+
+
+class TruncatedFfmpeg(FakeFfmpeg):
+    def spawn_for_source(self, source_url: str) -> FakeProc:
+        _ = source_url
+        return FakeProc(
+            b"abc123",
+            returncode=0,
+            stderr=b"[tls] Error in the pull function.\nInput/output error\n",
+        )
 
 
 class FakeYtDlp:
@@ -91,3 +107,36 @@ def test_stream_engine_playback_lifecycle(tmp_path):
     finished = repo.get_item(created[0].id)
     assert finished is not None
     assert finished.status in (QueueStatus.completed, QueueStatus.skipped)
+
+
+def test_stream_engine_does_not_mark_upstream_truncation_complete(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/engine.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [
+            NewQueueItem(
+                source_url="u",
+                normalized_url="u",
+                source_type="video",
+                title="Song",
+                duration_seconds=120,
+            )
+        ]
+    )
+    item = repo.dequeue_next()
+    assert item is not None
+
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=TruncatedFfmpeg(),
+        chunk_size=2,
+        queue_poll_seconds=0.1,
+        playback_retry_count=0,
+    )
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - lifecycle unit coverage
+
+    finished = repo.get_item(created[0].id)
+    assert finished is not None
+    assert finished.status == QueueStatus.failed
