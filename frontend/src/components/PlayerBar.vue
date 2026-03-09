@@ -36,6 +36,24 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 md:justify-end">
+          <div class="flex items-center gap-2">
+            <UButton
+              type="button"
+              :color="sidebarView === sidebarQueueView ? 'primary' : 'neutral'"
+              :variant="sidebarView === sidebarQueueView ? 'soft' : 'ghost'"
+              icon="i-lucide-list-music"
+              aria-label="Show queue and history"
+              @click="emit('set-sidebar-view', sidebarQueueView)"
+            />
+            <UButton
+              type="button"
+              :color="sidebarView === sidebarSonosView ? 'primary' : 'neutral'"
+              :variant="sidebarView === sidebarSonosView ? 'soft' : 'ghost'"
+              icon="i-lucide-speaker"
+              aria-label="Show Sonos speakers"
+              @click="emit('set-sidebar-view', sidebarSonosView)"
+            />
+          </div>
         <a
           class="mr-1 text-xs font-medium text-emerald-400 hover:text-emerald-300"
           :href="state.stream_url"
@@ -64,7 +82,7 @@
         >
           Stop Local
         </UButton>
-        <UButton type="button" color="neutral" variant="outline" size="xs" @click="$emit('skip')">
+        <UButton type="button" color="neutral" variant="outline" size="xs" @click="emit('skip')">
           Skip
         </UButton>
       </div>
@@ -82,9 +100,21 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  sidebarView: {
+    type: String,
+    required: true,
+  },
+  sidebarQueueView: {
+    type: String,
+    required: true,
+  },
+  sidebarSonosView: {
+    type: String,
+    required: true,
+  },
 });
 
-defineEmits(["skip"]);
+const emit = defineEmits(["skip", "set-sidebar-view"]);
 
 const audioEl = ref(null);
 const wantsLocalPlayback = ref(false);
