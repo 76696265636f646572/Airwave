@@ -17,3 +17,4 @@ bin/ffmpeg
 bin/yt-dlp
 node_modules/
 app/static/dist/
+.cursor/
