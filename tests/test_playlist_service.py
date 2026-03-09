@@ -92,7 +92,7 @@ def test_queue_playlist_replace_swaps_existing_queue(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/playlist_replace.db")
     repo.init_db()
     service = PlaylistService(repo, FakeYtDlp(playlist=True))
-    repo.enqueue_items([NewQueueItem(source_url="u1", normalized_url="u1", source_type="video", title="seed")])
+    original = repo.enqueue_items([NewQueueItem(source_url="u1", normalized_url="u1", source_type="video", title="seed")])[0]
 
     imported = service.import_playlist("https://youtube.com/playlist?list=x")
     queued = service.queue_playlist(imported["playlist_id"], replace=True)
@@ -100,10 +100,11 @@ def test_queue_playlist_replace_swaps_existing_queue(tmp_path):
     assert queued["count"] == 2
     queue = repo.list_queue()
     queued_items = [item for item in queue if item.status == QueueStatus.queued]
-    removed_items = [item for item in queue if item.status == QueueStatus.removed]
     assert len(queued_items) == 2
-    assert len(removed_items) == 1
     assert all(item.source_type == "playlist_item" for item in queued_items)
+    original_after = repo.get_item(original.id)
+    assert original_after is not None
+    assert original_after.status == QueueStatus.removed
 
 
 def test_update_playlist_rename_and_pin(tmp_path):
