@@ -79,12 +79,14 @@ class StreamEngine:
         ffmpeg_pipeline: FfmpegPipeline,
         chunk_size: int = 4096,
         queue_poll_seconds: float = 1.0,
+        playback_retry_count: int = 2,
     ) -> None:
         self.repository = repository
         self.yt_dlp_service = yt_dlp_service
         self.ffmpeg_pipeline = ffmpeg_pipeline
         self.chunk_size = chunk_size
         self.queue_poll_seconds = queue_poll_seconds
+        self.playback_retry_count = max(0, playback_retry_count)
         self.state = PlaybackState()
         self.hub = SharedMp3Hub()
         self._stop_event = threading.Event()
@@ -142,6 +144,23 @@ class StreamEngine:
             process.wait(timeout=1)
         except Exception:
             pass
+
+    @staticmethod
+    def _process_return_code(process: subprocess.Popen[bytes]) -> int | None:
+        poll = getattr(process, "poll", None)
+        if callable(poll):
+            code = poll()
+            if code is not None:
+                return code
+        wait = getattr(process, "wait", None)
+        if callable(wait):
+            try:
+                wait(timeout=0.2)
+            except Exception:
+                pass
+        if callable(poll):
+            return poll()
+        return getattr(process, "returncode", None)
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -203,35 +222,125 @@ class StreamEngine:
         self.state.started_at_epoch_seconds = time.time()
         self.state.started_at_monotonic_seconds = time.monotonic()
         self._skip_event.clear()
+        total_attempts = self.playback_retry_count + 1
+        total_chunks_sent = 0
+        total_bytes_sent = 0
         try:
-            resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
-            self.repository.mark_item_resolved(queue_item.id, resolved.stream_url)
-            if resolved.thumbnail_url:
-                self.state.now_playing_thumbnail_url = resolved.thumbnail_url
-            if resolved.channel:
-                self.state.now_playing_channel = resolved.channel
-            process = self.ffmpeg_pipeline.spawn_for_source(resolved.stream_url)
-            self._set_active_process(process)
-            while not self._stop_event.is_set():
-                if self._skip_event.is_set():
-                    raise InterruptedError("Track skipped")
-                chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
-                if not chunk:
-                    break
-                self.hub.publish(chunk)
-            status = QueueStatus.skipped if self._skip_event.is_set() else QueueStatus.completed
-            self.repository.mark_playback_finished(queue_item.id, status=status)
+            for attempt in range(1, total_attempts + 1):
+                if self._stop_event.is_set():
+                    raise InterruptedError("Playback stopped")
+                try:
+                    resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+                    self.repository.mark_item_resolved(queue_item.id, resolved.stream_url)
+                    if resolved.thumbnail_url:
+                        self.state.now_playing_thumbnail_url = resolved.thumbnail_url
+                    if resolved.channel:
+                        self.state.now_playing_channel = resolved.channel
+                    process = self.ffmpeg_pipeline.spawn_for_source(resolved.stream_url)
+                    self._set_active_process(process)
+                    attempt_chunks_sent = 0
+                    attempt_bytes_sent = 0
+                    attempt_started_at = time.monotonic()
+                    while not self._stop_event.is_set():
+                        if self._skip_event.is_set():
+                            raise InterruptedError("Track skipped")
+                        chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
+                        if not chunk:
+                            break
+                        self.hub.publish(chunk)
+                        attempt_chunks_sent += 1
+                        attempt_bytes_sent += len(chunk)
+                        total_chunks_sent += 1
+                        total_bytes_sent += len(chunk)
+
+                    if self._stop_event.is_set():
+                        raise InterruptedError("Playback stopped")
+                    if self._skip_event.is_set():
+                        raise InterruptedError("Track skipped")
+
+                    return_code = self._process_return_code(process)
+                    if return_code != 0:
+                        raise FfmpegError(f"ffmpeg exited with status {return_code}")
+                    elapsed_seconds = max(0.0, time.monotonic() - attempt_started_at)
+                    if queue_item.duration_seconds and queue_item.duration_seconds > 30:
+                        if elapsed_seconds < queue_item.duration_seconds * 0.2:
+                            logger.warning(
+                                "Track %s (%s) completed unusually fast (elapsed=%.2fs duration=%ss bytes=%s chunks=%s)",
+                                queue_item.id,
+                                queue_item.title or queue_item.source_url,
+                                elapsed_seconds,
+                                queue_item.duration_seconds,
+                                attempt_bytes_sent,
+                                attempt_chunks_sent,
+                            )
+                    self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.completed)
+                    logger.info(
+                        "Track %s completed on attempt %s/%s (elapsed=%.2fs bytes=%s chunks=%s)",
+                        queue_item.id,
+                        attempt,
+                        total_attempts,
+                        elapsed_seconds,
+                        attempt_bytes_sent,
+                        attempt_chunks_sent,
+                    )
+                    return
+                except InterruptedError:
+                    raise
+                except (YtDlpError, FfmpegError) as exc:
+                    if attempt >= total_attempts:
+                        logger.error(
+                            "Track %s failed after %s/%s attempts (%s): %s",
+                            queue_item.id,
+                            attempt,
+                            total_attempts,
+                            type(exc).__name__,
+                            exc,
+                        )
+                        raise
+                    logger.warning(
+                        "Playback attempt %s/%s failed on track %s (%s): %s",
+                        attempt,
+                        total_attempts,
+                        queue_item.id,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    time.sleep(min(0.5, self.queue_poll_seconds))
+                finally:
+                    self._terminate_active_process()
+                    self._set_active_process(None)
         except InterruptedError:
+            logger.info(
+                "Track %s interrupted (%s). streamed_bytes=%s streamed_chunks=%s",
+                queue_item.id,
+                "skipped" if self._skip_event.is_set() else "stopped",
+                total_bytes_sent,
+                total_chunks_sent,
+            )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.skipped)
         except YtDlpError as exc:
-            logger.warning("Failed resolving track %s: %s", queue_item.id, exc)
+            logger.warning(
+                "Failed resolving track %s (%s): %s",
+                queue_item.id,
+                queue_item.source_url,
+                exc,
+            )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
         except FfmpegError as exc:
-            logger.error("ffmpeg error on track %s: %s", queue_item.id, exc)
+            logger.error(
+                "ffmpeg error on track %s (%s): %s [bytes=%s chunks=%s]",
+                queue_item.id,
+                queue_item.title or queue_item.source_url,
+                exc,
+                total_bytes_sent,
+                total_chunks_sent,
+            )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
         except Exception as exc:
-            logger.exception("Playback failure: %s", exc)
+            logger.exception(
+                "Playback failure on track %s (%s): %s",
+                queue_item.id,
+                queue_item.title or queue_item.source_url,
+                exc,
+            )
             self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.failed, error_message=str(exc))
-        finally:
-            self._terminate_active_process()
-            self._set_active_process(None)
