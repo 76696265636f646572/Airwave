@@ -13,7 +13,8 @@ from typing import Callable, Generator
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
-from app.services.yt_dlp_service import YtDlpError, YtDlpService
+from app.services.resolver.base import SourceResolver
+from app.services.resolver.yt_dlp_resolver import YtDlpError
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,10 @@ class PlaybackState:
     now_playing_title: str | None = None
     now_playing_channel: str | None = None
     now_playing_thumbnail_url: str | None = None
+    now_playing_source_site: str | None = None
     now_playing_duration_seconds: int | None = None
+    now_playing_is_live: bool = False
+    now_playing_can_seek: bool = False
     started_at_epoch_seconds: float | None = None
     started_at_monotonic_seconds: float | None = None
     paused: bool = False
@@ -113,7 +117,7 @@ class StreamEngine:
     def __init__(
         self,
         repository: Repository,
-        yt_dlp_service: YtDlpService,
+        source_resolver: SourceResolver,
         ffmpeg_pipeline: FfmpegPipeline,
         chunk_size: int = 4096,
         queue_poll_seconds: float = 1.0,
@@ -122,7 +126,7 @@ class StreamEngine:
         on_state_change: Callable[[], None] | None = None,
     ) -> None:
         self.repository = repository
-        self.yt_dlp_service = yt_dlp_service
+        self.source_resolver = source_resolver
         self.ffmpeg_pipeline = ffmpeg_pipeline
         self.chunk_size = chunk_size
         self.queue_poll_seconds = queue_poll_seconds
@@ -228,6 +232,8 @@ class StreamEngine:
         return True
 
     def seek_to_percent(self, percent: float) -> bool:
+        if not self.state.now_playing_can_seek:
+            return False
         duration_seconds = self.state.now_playing_duration_seconds
         if duration_seconds is None or duration_seconds <= 0:
             return False
@@ -237,6 +243,8 @@ class StreamEngine:
 
     def seek_to_seconds(self, seconds: float) -> bool:
         if self.state.mode != PlaybackMode.playing:
+            return False
+        if not self.state.now_playing_can_seek:
             return False
         duration_seconds = self.state.now_playing_duration_seconds
         target_seconds = max(0.0, float(seconds))
@@ -293,7 +301,7 @@ class StreamEngine:
                 elapsed_seconds = max(0.0, time.monotonic() - self.state.started_at_monotonic_seconds)
         progress_percent: float | None = None
         if elapsed_seconds is not None and self.state.now_playing_duration_seconds:
-            if self.state.now_playing_duration_seconds > 0:
+            if self.state.now_playing_duration_seconds > 0 and self.state.now_playing_can_seek:
                 progress_percent = min(100.0, (elapsed_seconds / self.state.now_playing_duration_seconds) * 100.0)
         return {
             "duration_seconds": self.state.now_playing_duration_seconds,
@@ -480,7 +488,10 @@ class StreamEngine:
         self.state.now_playing_title = None
         self.state.now_playing_channel = None
         self.state.now_playing_thumbnail_url = None
+        self.state.now_playing_source_site = None
         self.state.now_playing_duration_seconds = None
+        self.state.now_playing_is_live = False
+        self.state.now_playing_can_seek = False
         self.state.started_at_epoch_seconds = None
         self.state.started_at_monotonic_seconds = None
         self.state.paused = False
@@ -517,7 +528,10 @@ class StreamEngine:
         self.state.now_playing_title = queue_item.title
         self.state.now_playing_channel = queue_item.channel
         self.state.now_playing_thumbnail_url = queue_item.thumbnail_url
+        self.state.now_playing_source_site = None
         self.state.now_playing_duration_seconds = queue_item.duration_seconds
+        self.state.now_playing_is_live = queue_item.source_type == "live_stream"
+        self.state.now_playing_can_seek = bool((queue_item.duration_seconds or 0) > 0) and not self.state.now_playing_is_live
         start_offset_seconds = self._consume_pending_seek_seconds()
         self._set_playback_offset_seconds(start_offset_seconds)
         self.state.paused = False
@@ -535,7 +549,7 @@ class StreamEngine:
                     if self._stop_event.is_set():
                         raise InterruptedError("stop")
                     try:
-                        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+                        resolved = self.source_resolver.resolve_video(queue_item.source_url)
                         resolved_duration_seconds = resolved.duration_seconds
                         probe_source = getattr(self.ffmpeg_pipeline, "probe_source", None)
                         try:
@@ -554,23 +568,24 @@ class StreamEngine:
                             self.state.now_playing_thumbnail_url = resolved.thumbnail_url
                         if resolved.channel:
                             self.state.now_playing_channel = resolved.channel
+                        self.state.now_playing_source_site = resolved.source_site
+                        self.state.now_playing_is_live = bool(resolved.is_live)
+                        self.state.now_playing_can_seek = bool(resolved.can_seek)
+                        if not resolved.can_seek:
+                            self.state.now_playing_duration_seconds = None
+                        elif resolved.duration_seconds is not None:
+                            self.state.now_playing_duration_seconds = resolved.duration_seconds
                         self._notify_state_changed()
                         seek_offset = self._consume_pending_seek_seconds(default=start_offset_seconds)
                         self._set_playback_offset_seconds(seek_offset)
                         start_offset_seconds = seek_offset
 
                         spawn_for_source = getattr(self.ffmpeg_pipeline, "spawn_for_source", None)
-                        if callable(spawn_for_source) and seek_offset > 0:
-                            source_process = None
-                            process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
-                            self._set_active_processes(process, None)
-                        else:
-                            source_process = self.yt_dlp_service.spawn_audio_stream(queue_item.source_url)
-                            self._set_active_processes(None, source_process)
-                            process = self.ffmpeg_pipeline.spawn_for_stdin(source_process.stdout)
-                            if source_process.stdout is not None:
-                                source_process.stdout.close()
-                            self._set_active_processes(process, source_process)
+                        if not callable(spawn_for_source):
+                            raise FfmpegError("spawn_for_source unavailable")
+                        source_process = None
+                        process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
+                        self._set_active_processes(process, None)
 
                         attempt_chunks_sent = 0
                         attempt_bytes_sent = 0
@@ -630,7 +645,11 @@ class StreamEngine:
                             raise YtDlpError(f"yt-dlp exited with status {source_return_code}")
                         if premature_end and stderr_failure:
                             raise YtDlpError("upstream stream ended early after transport failure")
-                        if queue_item.duration_seconds and queue_item.duration_seconds > 30:
+                        if (
+                            queue_item.duration_seconds
+                            and queue_item.duration_seconds > 30
+                            and not self.state.now_playing_is_live
+                        ):
                             if elapsed_seconds < queue_item.duration_seconds * 0.2:
                                 logger.warning(
                                     "Track %s (%s) completed unusually fast (elapsed=%.2fs duration=%ss bytes=%s chunks=%s)",

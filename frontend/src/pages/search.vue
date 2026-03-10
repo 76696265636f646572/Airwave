@@ -1,6 +1,6 @@
 <template>
   <section class="min-h-0 h-full rounded-xl border border-neutral-700 p-6 overflow-auto surface-panel">
-    <h2 class="text-2xl font-bold">YouTube Search</h2>
+    <h2 class="text-2xl font-bold">Search</h2>
     <p class="mt-1 text-sm text-muted">
       <template v-if="query">
         Showing results for "{{ query }}"
@@ -12,10 +12,27 @@
 
     <div v-if="loading" class="mt-4 text-sm text-muted">Searching...</div>
     <div v-else-if="errorMessage" class="mt-4 text-sm text-red-300">{{ errorMessage }}</div>
-    <div v-else-if="query && !results.length" class="mt-4 text-sm text-muted">No results found.</div>
+    <div v-else-if="query && !filteredResults.length" class="mt-4 text-sm text-muted">No results found.</div>
 
-    <ul v-if="results.length" class="mt-4 space-y-2">
-      <li v-for="item in results" :key="item.id || item.source_url">
+    <div v-if="warnings.length" class="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+      Some sources had issues: {{ warningText }}
+    </div>
+
+    <div v-if="results.length" class="mt-4 flex flex-wrap gap-2">
+      <button
+        v-for="site in filterTabs"
+        :key="site"
+        type="button"
+        class="rounded-md border px-3 py-1 text-xs"
+        :class="activeSiteFilter === site ? 'border-primary-500 text-primary-300' : 'border-neutral-700 text-muted'"
+        @click="activeSiteFilter = site"
+      >
+        {{ site }}
+      </button>
+    </div>
+
+    <ul v-if="filteredResults.length" class="mt-4 space-y-2">
+      <li v-for="item in filteredResults" :key="item.id || item.source_url">
         <Song
           :item="item"
           mode="search"
@@ -27,12 +44,13 @@
 </template>
 
 <script setup>
-import { ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
 import Song from "../components/Song.vue";
 import { fetchJson } from "../composables/useApi";
 import { useLibraryState } from "../composables/useLibraryState";
+import { useSearchSites } from "../composables/useSearchSites";
 
 const { playlists } = useLibraryState();
 
@@ -41,6 +59,13 @@ const query = ref("");
 const results = ref([]);
 const loading = ref(false);
 const errorMessage = ref("");
+const warnings = ref([]);
+const activeSiteFilter = ref("All");
+const {
+  enabledSites,
+  initializeSearchSites,
+  enabledSitesParam,
+} = useSearchSites();
 
 let requestId = 0;
 
@@ -49,12 +74,46 @@ function normalizeQuery(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function searchYoutube(rawQuery) {
+const filterTabs = computed(() => {
+  const siteSet = new Set((results.value || []).map((item) => item.source_site).filter(Boolean));
+  return ["All", ...Array.from(siteSet)];
+});
+
+const filteredResults = computed(() => {
+  if (activeSiteFilter.value === "All") return results.value;
+  return results.value.filter((item) => item.source_site === activeSiteFilter.value);
+});
+
+function formatSiteLabel(site) {
+  const normalized = String(site || "").trim().toLowerCase();
+  const map = {
+    youtube: "YouTube",
+    soundcloud: "SoundCloud",
+    vimeo: "Vimeo",
+  };
+  return map[normalized] || (normalized ? `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}` : "Source");
+}
+
+const warningText = computed(() =>
+  warnings.value
+    .map((warning) => {
+      if (!warning || typeof warning !== "object") return "";
+      const siteLabel = formatSiteLabel(warning.site);
+      if (warning.reason === "timeout") return `${siteLabel} timed out`;
+      if (warning.message) return `${siteLabel}: ${warning.message}`;
+      return `${siteLabel} failed`;
+    })
+    .filter(Boolean)
+    .join(", ")
+);
+
+async function searchAllSites(rawQuery) {
   const normalized = normalizeQuery(rawQuery);
   query.value = normalized;
 
   if (!normalized) {
     results.value = [];
+    warnings.value = [];
     errorMessage.value = "";
     loading.value = false;
     return;
@@ -65,12 +124,18 @@ async function searchYoutube(rawQuery) {
   errorMessage.value = "";
 
   try {
-    const payload = await fetchJson(`/api/search/youtube?q=${encodeURIComponent(normalized)}&limit=10`);
+    const sites = enabledSitesParam();
+    const payload = await fetchJson(
+      `/api/search?q=${encodeURIComponent(normalized)}&limit=10&sites=${encodeURIComponent(sites)}`
+    );
     if (activeRequestId !== requestId) return;
     results.value = Array.isArray(payload?.results) ? payload.results : [];
+    warnings.value = Array.isArray(payload?.warnings) ? payload.warnings : [];
+    activeSiteFilter.value = "All";
   } catch (error) {
     if (activeRequestId !== requestId) return;
     results.value = [];
+    warnings.value = [];
     errorMessage.value = error instanceof Error ? error.message : "Search failed";
   } finally {
     if (activeRequestId === requestId) {
@@ -82,8 +147,21 @@ async function searchYoutube(rawQuery) {
 watch(
   () => route.query.q,
   (value) => {
-    searchYoutube(value);
+    searchAllSites(value);
   },
   { immediate: true },
 );
+
+watch(
+  () => enabledSites.value.join(","),
+  () => {
+    if (query.value) {
+      searchAllSites(query.value);
+    }
+  }
+);
+
+onMounted(() => {
+  initializeSearchSites();
+});
 </script>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Audio placeholder">
+  <rect width="128" height="128" rx="14" fill="#1f2937"/>
+  <circle cx="64" cy="64" r="34" fill="#111827"/>
+  <circle cx="64" cy="64" r="10" fill="#6b7280"/>
+  <path d="M36 50h8v28h-8zM84 50h8v28h-8zM48 40h8v48h-8zM72 40h8v48h-8z" fill="#9ca3af"/>
+</svg>

@@ -15,10 +15,12 @@ from app.db.repository import Repository
 from app.services.ffmpeg_pipeline import FfmpegPipeline
 from app.services.ffmpeg_setup import ensure_ffmpeg_path
 from app.services.playlist_service import PlaylistService
+from app.services.resolver.direct_resolver import DirectUrlResolver
+from app.services.resolver.yt_dlp_resolver import YtDlpResolver
 from app.services.sonos_service import SonosService
+from app.services.source_resolver import CompositeSourceResolver
 from app.services.stream_engine import StreamEngine
 from app.services.ui_events import UiEventBroker
-from app.services.yt_dlp_service import YtDlpService
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -55,7 +57,18 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     configure_logging()
 
     repository = Repository(settings.db_url)
-    yt_dlp_service = YtDlpService(settings.yt_dlp_path)
+    yt_dlp_resolver = YtDlpResolver(
+        settings.yt_dlp_path,
+        blocked_domains=settings.blocked_domains_list,
+        blocked_extractors=settings.blocked_extractors_list,
+    )
+    direct_resolver = DirectUrlResolver()
+    source_resolver = CompositeSourceResolver(
+        yt_dlp_resolver=yt_dlp_resolver,
+        direct_resolver=direct_resolver,
+        searchable_sites=settings.searchable_sites_list,
+        default_enabled_search_sites=settings.default_enabled_search_sites_list,
+    )
     ffmpeg_path = ensure_ffmpeg_path(settings.ffmpeg_path)
     ffmpeg_pipeline = FfmpegPipeline(ffmpeg_path, bitrate=settings.mp3_bitrate)
     ui_events = UiEventBroker()
@@ -65,14 +78,14 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
 
     stream_engine = StreamEngine(
         repository=repository,
-        yt_dlp_service=yt_dlp_service,
+        source_resolver=source_resolver,
         ffmpeg_pipeline=ffmpeg_pipeline,
         chunk_size=settings.chunk_size,
         queue_poll_seconds=settings.queue_poll_seconds,
         stats_log_seconds=settings.stream_stats_log_seconds,
         on_state_change=notify_ui_state_changed,
     )
-    playlist_service = PlaylistService(repository, yt_dlp_service)
+    playlist_service = PlaylistService(repository, source_resolver)
     sonos_service = SonosService()
 
     @asynccontextmanager
@@ -88,7 +101,8 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
             stream_engine.start()
         app.state.settings = settings
         app.state.repository = repository
-        app.state.yt_dlp_service = yt_dlp_service
+        app.state.yt_dlp_service = yt_dlp_resolver
+        app.state.source_resolver = source_resolver
         app.state.ffmpeg_pipeline = ffmpeg_pipeline
         app.state.stream_engine = stream_engine
         app.state.playlist_service = playlist_service

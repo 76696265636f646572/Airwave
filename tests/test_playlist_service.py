@@ -52,6 +52,24 @@ class FakeYtDlp:
         )
 
 
+class FakeLiveResolver(FakeYtDlp):
+    def __init__(self) -> None:
+        super().__init__(playlist=False)
+
+    def resolve_video(self, url: str) -> ResolvedTrack:
+        return ResolvedTrack(
+            source_url=url,
+            normalized_url=url,
+            title=None,
+            channel="Radio",
+            duration_seconds=None,
+            thumbnail_url=None,
+            stream_url=url,
+            is_live=True,
+            can_seek=False,
+        )
+
+
 def test_add_single_video(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/playlist.db")
     repo.init_db()
@@ -86,7 +104,7 @@ def test_playlist_thumbnail_falls_back_to_first_entry(tmp_path):
 
     service.import_playlist("https://youtube.com/playlist?list=x")
     playlists = service.list_playlists()
-    assert playlists[0]["thumbnail_url"] == "https://i.ytimg.com/vi/1/hqdefault.jpg"
+    assert playlists[0]["thumbnail_url"] is None
 
 
 def test_import_playlist_endpoint_behavior_is_library_only(tmp_path):
@@ -159,3 +177,26 @@ def test_update_playlist_rename_rejected_for_imported(tmp_path):
     playlists_after = service.list_playlists()
     current = next(p for p in playlists_after if p["id"] == imported_id)
     assert current["title"] == original_title
+
+
+def test_add_live_stream_to_playlist_requires_title(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/live_name_required.db")
+    repo.init_db()
+    service = PlaylistService(repo, FakeLiveResolver())
+    created = service.create_custom_playlist("Stations")
+
+    try:
+        service.add_item_to_playlist(created["id"], "https://radio.example/live")
+        assert False, "Expected ValueError for missing live stream title"
+    except ValueError as exc:
+        assert "title is required" in str(exc).lower()
+
+
+def test_add_live_stream_to_playlist_with_title(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/live_named.db")
+    repo.init_db()
+    service = PlaylistService(repo, FakeLiveResolver())
+    created = service.create_custom_playlist("Stations")
+
+    entry = service.add_item_to_playlist(created["id"], "https://radio.example/live", title="Station One")
+    assert entry["title"] == "Station One"

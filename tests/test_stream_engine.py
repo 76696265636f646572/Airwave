@@ -29,6 +29,10 @@ class FakeFfmpeg:
         _ = stdin
         return FakeProc(b"abc123")
 
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
+        _ = source_url, start_at_seconds
+        return FakeProc(b"abc123")
+
     def spawn_silence(self) -> FakeProc:
         return FakeProc(b"\x00" * 8)
 
@@ -45,6 +49,14 @@ class FakeFfmpeg:
 class TruncatedFfmpeg(FakeFfmpeg):
     def spawn_for_stdin(self, stdin) -> FakeProc:
         _ = stdin
+        return FakeProc(
+            b"abc123",
+            returncode=0,
+            stderr=b"[tls] Error in the pull function.\nInput/output error\n",
+        )
+
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
+        _ = source_url, start_at_seconds
         return FakeProc(
             b"abc123",
             returncode=0,
@@ -120,7 +132,7 @@ def test_stream_engine_playback_lifecycle(tmp_path):
 
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         chunk_size=2,
         queue_poll_seconds=0.1,
@@ -152,7 +164,7 @@ def test_stream_engine_does_not_mark_upstream_truncation_complete(tmp_path):
 
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=TruncatedFfmpeg(),
         chunk_size=2,
         queue_poll_seconds=0.1,
@@ -171,7 +183,7 @@ def test_pause_interrupt_is_consumed_without_lingering_skip_event(tmp_path):
     repo.init_db()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )
@@ -188,7 +200,7 @@ def test_interrupt_clears_buffered_audio_for_connected_clients(tmp_path):
     repo.init_db()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )
@@ -209,7 +221,7 @@ def test_paused_cycle_exits_cleanly_on_resume_interrupt(tmp_path):
     repo.init_db()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )
@@ -226,7 +238,7 @@ def test_paused_cycle_does_not_publish_silence(tmp_path):
     repo.init_db()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )
@@ -259,7 +271,7 @@ def test_shuffle_reorders_queue_and_restores_previous_order(tmp_path, monkeypatc
 
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )

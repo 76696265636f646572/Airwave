@@ -22,10 +22,10 @@
         <input
           :value="searchText"
           type="search"
-          placeholder="Search local + YouTube"
+          placeholder="Search enabled sources"
           class="h-10 w-full min-w-0 rounded-md border px-3 text-sm sm:w-[320px] surface-input"
           @input="onSearchTextChange($event.target.value)"
-          @keydown.enter.prevent="onYoutubeSearch(router, route, searchText)"
+          @keydown.enter.prevent="onSearch(router, route, searchText)"
         />
         <UButton
           type="button"
@@ -33,7 +33,7 @@
           variant="solid"
           size="md"
           class="self-start sm:self-auto"
-          @click="onYoutubeSearch(router, route, searchText)"
+          @click="onSearch(router, route, searchText)"
         >
           Search
         </UButton>
@@ -44,7 +44,7 @@
       <input
         v-model="urlInput"
         type="url"
-        placeholder="https://www.youtube.com/watch?v=... or https://www.youtube.com/playlist?list=..."
+        placeholder="Paste any supported video, playlist, or live stream URL"
         required
         class="h-10 w-full min-w-0 flex-1 rounded-md border px-3 text-sm surface-input"
       />
@@ -106,7 +106,7 @@ const urlInput = ref("");
 const router = useRouter();
 const route = useRoute();
 const { addUrl, playUrl, importPlaylistUrl } = useLibraryState();
-const { searchText, onSearchTextChange, onYoutubeSearch } = useUiState();
+const { searchText, onSearchTextChange, onSearch } = useUiState();
 
 /** Playlist page URL (playlist?list=...). Watch URLs are treated as single video. */
 const isPlaylistUrl = computed(() => {

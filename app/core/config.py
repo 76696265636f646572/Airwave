@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     stream_path: str = "/stream/live.mp3"
     yt_dlp_path: str = "./bin/yt-dlp"
     ffmpeg_path: str = "ffmpeg"
+    blocked_domains: str = ""
+    blocked_extractors: str = ""
+    searchable_sites: str = "youtube,soundcloud,vimeo"
+    default_enabled_search_sites: str = "youtube,soundcloud"
+    search_site_timeout_seconds: float = Field(default=4.0, ge=0.5, le=30.0)
     mp3_bitrate: str = "128k"
     chunk_size: int = 2048
     queue_poll_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
@@ -110,6 +115,26 @@ class Settings(BaseSettings):
 
     def stream_url_for(self, request_base_url: str | None = None) -> str:
         return f"{self.resolved_public_base_url(request_base_url)}{self.stream_path}"
+
+    @staticmethod
+    def _split_csv(value: str) -> list[str]:
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @property
+    def blocked_domains_list(self) -> list[str]:
+        return self._split_csv(self.blocked_domains)
+
+    @property
+    def blocked_extractors_list(self) -> list[str]:
+        return self._split_csv(self.blocked_extractors)
+
+    @property
+    def searchable_sites_list(self) -> list[str]:
+        return [site.lower() for site in self._split_csv(self.searchable_sites)]
+
+    @property
+    def default_enabled_search_sites_list(self) -> list[str]:
+        return [site.lower() for site in self._split_csv(self.default_enabled_search_sites)]
 
 
 @lru_cache(maxsize=1)

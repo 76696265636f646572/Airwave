@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from typing import Any
 from uuid import UUID
 
@@ -11,7 +12,13 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.services.stream_engine import StreamEngine
-from app.services.yt_dlp_service import youtube_video_id_from_url
+from app.services.resolver.base import ResolverError
+from app.services.resolver.utils import (
+    is_likely_live_url,
+    sanitize_yt_dlp_error,
+    source_site_from_url,
+    youtube_video_id_from_url,
+)
 
 root_router = APIRouter()
 api_router = APIRouter()
@@ -75,6 +82,10 @@ class SeekRequest(BaseModel):
     percent: float = Field(ge=0.0, le=100.0)
 
 
+class AddPlaylistEntryRequest(AddUrlRequest):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 def _services(request: Request) -> dict[str, Any]:
     return {
         "repo": request.app.state.repository,
@@ -83,6 +94,7 @@ def _services(request: Request) -> dict[str, Any]:
         "settings": request.app.state.settings,
         "sonos": request.app.state.sonos_service,
         "yt_dlp": request.app.state.yt_dlp_service,
+        "resolver": request.app.state.source_resolver,
         "ui_events": request.app.state.ui_events,
     }
 
@@ -102,11 +114,13 @@ def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
         "paused": engine.state.paused,
         "repeat_mode": engine.state.repeat_mode.value,
         "shuffle_enabled": engine.state.shuffle_enabled,
-        "can_seek": bool(engine.state.now_playing_duration_seconds and engine.state.now_playing_duration_seconds > 0),
+        "can_seek": bool(getattr(engine.state, "now_playing_can_seek", False)),
         "now_playing_id": engine.state.now_playing_id,
         "now_playing_title": engine.state.now_playing_title,
         "now_playing_channel": getattr(engine.state, "now_playing_channel", None),
         "now_playing_thumbnail_url": getattr(engine.state, "now_playing_thumbnail_url", None),
+        "now_playing_source_site": getattr(engine.state, "now_playing_source_site", None),
+        "now_playing_is_live": getattr(engine.state, "now_playing_is_live", False),
         "stream_url": stream_url,
         **progress,
     }
@@ -117,6 +131,9 @@ def _serialize_queue_items(items: list[Any]) -> list[dict[str, Any]]:
         {
             "id": item.id,
             "video_id": youtube_video_id_from_url(item.source_url),
+            "source_site": source_site_from_url(item.source_url),
+            "is_live": item.source_type == "live_stream" or is_likely_live_url(item.source_url),
+            "can_seek": bool((item.duration_seconds or 0) > 0) and item.source_type != "live_stream",
             "title": item.title,
             "source_url": item.source_url,
             "status": item.status.value,
@@ -137,6 +154,9 @@ def _serialize_history_rows(rows: list[Any]) -> list[dict[str, Any]]:
             "id": row.id,
             "queue_item_id": row.queue_item_id,
             "video_id": youtube_video_id_from_url(row.source_url),
+            "source_site": source_site_from_url(row.source_url),
+            "is_live": is_likely_live_url(row.source_url),
+            "can_seek": False,
             "title": row.title,
             "source_url": row.source_url,
             "thumbnail_url": row.thumbnail_url,
@@ -207,7 +227,10 @@ def list_queue(request: Request) -> list[dict[str, Any]]:
 
 @api_router.post("/queue/add")
 def add_to_queue(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
-    result = _services(request)["playlist"].add_url(str(payload.url))
+    try:
+        result = _services(request)["playlist"].add_url(str(payload.url))
+    except ResolverError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_yt_dlp_error(str(exc))) from exc
     _publish_ui_snapshot(request)
     return {"ok": True, **result}
 
@@ -216,19 +239,22 @@ def add_to_queue(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
 def play_now(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
     services = _services(request)
     url = str(payload.url)
-    if services["yt_dlp"].is_playlist_url(url):
-        imported = services["playlist"].import_playlist(url)
-        queued = services["playlist"].queue_playlist(imported["playlist_id"], replace=True)
-        result = {
-            **imported,
-            "count": queued["count"],
-            "item_ids": queued["item_ids"],
-        }
-    else:
-        result = services["playlist"].add_url(url)
-        item_ids = result.get("item_ids") or []
-        if item_ids:
-            services["repo"].move_item_to_front(item_ids[0])
+    try:
+        if services["resolver"].is_playlist_url(url):
+            imported = services["playlist"].import_playlist(url)
+            queued = services["playlist"].queue_playlist(imported["playlist_id"], replace=True)
+            result = {
+                **imported,
+                "count": queued["count"],
+                "item_ids": queued["item_ids"],
+            }
+        else:
+            result = services["playlist"].add_url(url)
+            item_ids = result.get("item_ids") or []
+            if item_ids:
+                services["repo"].move_item_to_front(item_ids[0])
+    except ResolverError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_yt_dlp_error(str(exc))) from exc
     services["engine"].skip_current()
     _publish_ui_snapshot(request)
     return {"ok": True, **result}
@@ -330,7 +356,10 @@ def clear_history(request: Request) -> dict[str, bool]:
 
 @api_router.post("/playlist/preview")
 def playlist_preview(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
-    preview = _services(request)["playlist"].preview_playlist(str(payload.url))
+    try:
+        preview = _services(request)["playlist"].preview_playlist(str(payload.url))
+    except ResolverError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_yt_dlp_error(str(exc))) from exc
     return {
         "source_url": preview.source_url,
         "title": preview.title,
@@ -343,7 +372,10 @@ def playlist_preview(payload: AddUrlRequest, request: Request) -> dict[str, Any]
 
 @api_router.post("/playlist/import")
 def playlist_import(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
-    result = _services(request)["playlist"].import_playlist(str(payload.url))
+    try:
+        result = _services(request)["playlist"].import_playlist(str(payload.url))
+    except ResolverError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_yt_dlp_error(str(exc))) from exc
     _publish_ui_snapshot(request)
     return {"ok": True, **result}
 
@@ -375,13 +407,21 @@ def playlist_entries(playlist_id: UUID, request: Request) -> list[dict[str, Any]
 
 
 @api_router.post("/playlists/{playlist_id}/entries")
-def add_playlist_entry(playlist_id: UUID, payload: AddUrlRequest, request: Request) -> dict[str, Any]:
+def add_playlist_entry(playlist_id: UUID, payload: AddPlaylistEntryRequest, request: Request) -> dict[str, Any]:
     try:
-        result = _services(request)["playlist"].add_item_to_playlist(playlist_id=playlist_id, url=str(payload.url))
+        result = _services(request)["playlist"].add_item_to_playlist(
+            playlist_id=playlist_id,
+            url=str(payload.url),
+            title=payload.title,
+        )
         _publish_ui_snapshot(request)
         return result
     except ValueError as exc:
+        if "required" in str(exc).lower():
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ResolverError as exc:
+        raise HTTPException(status_code=400, detail=sanitize_yt_dlp_error(str(exc))) from exc
 
 
 @api_router.post("/playlists/{playlist_id}/queue")
@@ -456,14 +496,74 @@ async def websocket_events(websocket: WebSocket) -> None:
         await broker.remove_client(queue)
 
 
+def _search_sites_param(raw_sites: str | None) -> list[str]:
+    if not raw_sites:
+        return []
+    return [site.strip().lower() for site in raw_sites.split(",") if site.strip()]
+
+
+@api_router.get("/search")
+def search_multi_site(
+    request: Request,
+    q: str = Query(min_length=1),
+    sites: str | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=25),
+) -> dict[str, Any]:
+    services = _services(request)
+    resolver = services["resolver"]
+    search_sites = resolver.effective_search_sites(_search_sites_param(sites))
+    timeout_seconds = services["settings"].search_site_timeout_seconds
+    results: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(search_sites))) as executor:
+        futures = {executor.submit(resolver.search, q, site, limit): site for site in search_sites}
+        for future, site in list(futures.items()):
+            try:
+                site_results = future.result(timeout=timeout_seconds)
+                if isinstance(site_results, list):
+                    results.extend(site_results)
+            except concurrent.futures.TimeoutError:
+                warnings.append({"site": site, "reason": "timeout", "message": f"{site} timed out"})
+            except Exception as exc:
+                warnings.append(
+                    {
+                        "site": site,
+                        "reason": "failed",
+                        "message": sanitize_yt_dlp_error(str(exc) or f"{site} failed"),
+                    }
+                )
+
+    deduped: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for result in results:
+        key = (result.get("normalized_url") or result.get("source_url") or "").strip()
+        if not key or key in seen_urls:
+            continue
+        seen_urls.add(key)
+        deduped.append(result)
+    return {
+        "query": q,
+        "count": len(deduped),
+        "results": deduped,
+        "sites": search_sites,
+        "warnings": warnings,
+    }
+
+
+@api_router.get("/search/sites")
+def search_sites(request: Request) -> dict[str, Any]:
+    resolver = _services(request)["resolver"]
+    return resolver.searchable_sites_payload()
+
+
 @api_router.get("/search/youtube")
 def search_youtube(
     request: Request,
     q: str = Query(min_length=1),
     limit: int = Query(default=10, ge=1, le=25),
 ) -> dict[str, Any]:
-    results = _services(request)["yt_dlp"].search_videos(query=q, limit=limit)
-    return {"query": q, "count": len(results), "results": results}
+    return search_multi_site(request=request, q=q, sites="youtube", limit=limit)
 
 
 @root_router.get("/stream/live.mp3")

@@ -78,13 +78,13 @@ class FakePlaylistService:
             }
         ]
 
-    def add_item_to_playlist(self, playlist_id: uuid.UUID, url: str) -> dict:
+    def add_item_to_playlist(self, playlist_id: uuid.UUID, url: str, title: str | None = None) -> dict:
         if playlist_id != TEST_PLAYLIST_UUID:
             raise ValueError("Playlist not found")
         return {
             "id": 502,
             "playlist_id": playlist_id,
-            "title": f"added:{url}",
+            "title": title or f"added:{url}",
             "source_url": url,
             "position": 2,
         }
@@ -187,20 +187,37 @@ class FakeSonosService:
 
 
 @dataclass
-class FakeYtDlpService:
-    def search_videos(self, query: str, limit: int = 10):
+class FakeSourceResolver:
+    fail_site: str | None = None
+
+    def search(self, query: str, site: str = "youtube", limit: int = 10):
         _ = limit
+        if self.fail_site and site == self.fail_site:
+            raise RuntimeError(f"{site} endpoint error")
         return [
             {
-                "id": "v1",
+                "id": f"{site}-v1",
                 "source_url": "https://www.youtube.com/watch?v=v1",
                 "normalized_url": "https://www.youtube.com/watch?v=v1",
                 "title": f"{query} result",
                 "channel": "chan",
                 "duration_seconds": 120,
                 "thumbnail_url": None,
+                "source_site": "YouTube",
+                "site": site,
             }
         ]
+
+    def effective_search_sites(self, requested_sites=None):
+        if requested_sites:
+            return requested_sites
+        return ["youtube"]
+
+    def searchable_sites_payload(self):
+        return {"sites": ["youtube", "soundcloud"], "default_enabled_sites": ["youtube", "soundcloud"]}
+
+    def is_playlist_url(self, url: str) -> bool:
+        return "playlist" in url
 
 
 def _build_test_client(tmp_path):
@@ -388,7 +405,7 @@ def test_play_now_playlist_url_replaces_queue(tmp_path):
         fake_playlist = FakePlaylistService()
         app.state.playlist_service = fake_playlist
         app.state.stream_engine = fake_engine
-        app.state.yt_dlp_service = SimpleNamespace(is_playlist_url=lambda url: "playlist" in url)
+        app.state.source_resolver = SimpleNamespace(is_playlist_url=lambda url: "playlist" in url)
 
         play_now = client.post("/api/queue/play-now", json={"url": "https://www.youtube.com/playlist?list=abc"})
         assert play_now.status_code == 200
@@ -485,14 +502,40 @@ def test_playlist_library_endpoints(tmp_path):
 def test_search_endpoint(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:
-        app.state.yt_dlp_service = FakeYtDlpService()
+        app.state.source_resolver = FakeSourceResolver()
 
         search = client.get("/api/search/youtube?q=lofi&limit=5")
         assert search.status_code == 200
         payload = search.json()
         assert payload["query"] == "lofi"
         assert payload["count"] == 1
-        assert payload["results"][0]["id"] == "v1"
+        assert payload["results"][0]["id"] == "youtube-v1"
+
+
+def test_multi_site_search_endpoint_includes_warnings(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        app.state.source_resolver = FakeSourceResolver(fail_site="soundcloud")
+        response = client.get("/api/search?q=jazz&sites=youtube,soundcloud&limit=5")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["query"] == "jazz"
+        assert payload["count"] == 1
+        assert payload["sites"] == ["youtube", "soundcloud"]
+        assert payload["warnings"] == [
+            {"site": "soundcloud", "reason": "failed", "message": "soundcloud endpoint error"}
+        ]
+
+
+def test_search_sites_endpoint(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        app.state.source_resolver = FakeSourceResolver()
+        response = client.get("/api/search/sites")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["sites"] == ["youtube", "soundcloud"]
+        assert payload["default_enabled_sites"] == ["youtube", "soundcloud"]
 
 
 def test_stream_endpoint_returns_bytes_without_hanging(tmp_path):

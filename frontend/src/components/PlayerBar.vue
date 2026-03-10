@@ -4,8 +4,7 @@
       <div class="flex min-w-0 items-center gap-3">
         <div class="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-neutral-700 surface-elevated">
           <img
-            v-if="playbackState.now_playing_thumbnail_url"
-            :src="playbackState.now_playing_thumbnail_url"
+            :src="coverArtSrc"
             alt="Now playing cover"
             class="h-full w-full object-cover"
           />
@@ -16,8 +15,9 @@
           </p>
           <p class="truncate text-xs text-muted">
             {{ (playbackState.now_playing_channel || playbackState.mode || "idle").toUpperCase() }}
+            <span v-if="isLive" class="text-red-300"> · LIVE</span>
             <span v-if="playbackState.elapsed_seconds != null"> · {{ formatDuration(playbackState.elapsed_seconds) }}</span>
-            <span v-if="playbackState.duration_seconds"> / {{ formatDuration(playbackState.duration_seconds) }}</span>
+            <span v-if="playbackState.duration_seconds && !isLive"> / {{ formatDuration(playbackState.duration_seconds) }}</span>
           </p>
         </div>
       </div>
@@ -72,7 +72,7 @@
         </div>
         <div class="mt-1 flex w-full items-center justify-between text-xs text-muted">
           <span>{{ formatDuration(playbackState.elapsed_seconds) }}</span>
-          <span>{{ formatDuration(playbackState.duration_seconds) }}</span>
+          <span>{{ isLive ? "LIVE" : formatDuration(playbackState.duration_seconds) }}</span>
         </div>
       </div>
 
@@ -145,6 +145,8 @@ const { sidebarView } = useUiState();
 const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
 
 const isLocalPlaybackActive = computed(() => wantsLocalPlayback.value && Boolean(playbackState.value.stream_url));
+const isLive = computed(() => Boolean(playbackState.value.now_playing_is_live));
+const coverArtSrc = computed(() => playbackState.value.now_playing_thumbnail_url || "/static/placeholder-audio.svg");
 const playPauseIcon = computed(() =>
   playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-lucide-pause" : "i-lucide-play"
 );

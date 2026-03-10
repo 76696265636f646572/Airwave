@@ -18,6 +18,10 @@ class MissingFfmpegPipeline:
         _ = stdin
         raise FfmpegError("ffmpeg missing")
 
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0):
+        _ = source_url, start_at_seconds
+        raise FfmpegError("ffmpeg missing")
+
     @staticmethod
     def read_chunk(stdout, chunk_size: int):
         _ = stdout, chunk_size
@@ -54,6 +58,12 @@ class SequenceFfmpegPipeline:
         payload, code = self._attempts.pop(0)
         return FakeProc(payload, returncode=code)
 
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0):
+        _ = source_url, start_at_seconds
+        self.spawn_calls += 1
+        payload, code = self._attempts.pop(0)
+        return FakeProc(payload, returncode=code)
+
     @staticmethod
     def read_chunk(stdout, chunk_size: int):
         return stdout.read(chunk_size)
@@ -61,13 +71,10 @@ class SequenceFfmpegPipeline:
 
 class FakeYtDlp:
     def __init__(self) -> None:
-        self.spawn_urls: list[str] = []
-
-    def spawn_audio_stream(self, url: str) -> FakeProc:
-        self.spawn_urls.append(url)
-        return FakeProc(b"source", returncode=0)
+        self.resolve_urls: list[str] = []
 
     def resolve_video(self, url: str) -> ResolvedTrack:
+        self.resolve_urls.append(url)
         return ResolvedTrack(
             source_url=url,
             normalized_url=url,
@@ -81,13 +88,10 @@ class FakeYtDlp:
 
 class SourceAwareYtDlp:
     def __init__(self) -> None:
-        self.spawn_urls: list[str] = []
-
-    def spawn_audio_stream(self, url: str) -> FakeProc:
-        self.spawn_urls.append(url)
-        return FakeProc(b"source", returncode=0)
+        self.resolve_urls: list[str] = []
 
     def resolve_video(self, url: str) -> ResolvedTrack:
+        self.resolve_urls.append(url)
         return ResolvedTrack(
             source_url=url,
             normalized_url=url,
@@ -104,7 +108,7 @@ def test_engine_survives_missing_ffmpeg_in_idle(tmp_path):
     repo.init_db()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=MissingFfmpegPipeline(),
         queue_poll_seconds=0.01,
     )
@@ -126,7 +130,7 @@ def test_engine_marks_track_failed_when_ffmpeg_missing(tmp_path):
 
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=MissingFfmpegPipeline(),
         queue_poll_seconds=0.01,
     )
@@ -148,7 +152,7 @@ def test_engine_marks_track_failed_on_unexpected_ffmpeg_exit(tmp_path):
     pipeline = SequenceFfmpegPipeline(attempts=[(b"abc", 1)])
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=pipeline,
         queue_poll_seconds=0.01,
         playback_retry_count=0,
@@ -173,7 +177,7 @@ def test_engine_retries_track_and_recovers(tmp_path):
     pipeline = SequenceFfmpegPipeline(attempts=[(b"broken", 1), (b"healthy", 0)])
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=FakeYtDlp(),
+        source_resolver=FakeYtDlp(),
         ffmpeg_pipeline=pipeline,
         queue_poll_seconds=0.01,
         playback_retry_count=1,
@@ -207,7 +211,7 @@ def test_engine_only_advances_after_retries_exhausted(tmp_path):
     yt_dlp = SourceAwareYtDlp()
     engine = StreamEngine(
         repository=repo,
-        yt_dlp_service=yt_dlp,
+        source_resolver=yt_dlp,
         ffmpeg_pipeline=pipeline,
         queue_poll_seconds=0.01,
         playback_retry_count=2,
@@ -234,4 +238,4 @@ def test_engine_only_advances_after_retries_exhausted(tmp_path):
     assert first_saved.status == QueueStatus.failed
     assert second_saved.status == QueueStatus.completed
     assert pipeline.spawn_calls >= 4
-    assert yt_dlp.spawn_urls[:4] == ["u1", "u1", "u1", "u2"]
+    assert yt_dlp.resolve_urls[:4] == ["u1", "u1", "u1", "u2"]

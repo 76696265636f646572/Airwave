@@ -58,7 +58,7 @@ function onSearchTextChange(value) {
   searchText.value = value;
 }
 
-async function onYoutubeSearch(router, route, query) {
+async function onSearch(router, route, query) {
   const trimmed = query.trim();
   if (!trimmed) {
     if (route.path === "/search") {
@@ -124,7 +124,8 @@ export function useUiState() {
     queueSidebarTabs,
     initializeUiState,
     onSearchTextChange,
-    onYoutubeSearch,
+    onSearch,
+    onYoutubeSearch: onSearch,
     selectPlaylist,
   };
 }
