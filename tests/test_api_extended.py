@@ -383,6 +383,31 @@ def test_history_endpoint_includes_thumbnail_metadata(tmp_path):
         assert payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
 
 
+def test_history_endpoint_non_youtube_keeps_video_id_null_and_sets_source_site(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://www.mixcloud.com/artist/show/",
+                    normalized_url="https://www.mixcloud.com/artist/show/",
+                    source_type="video",
+                    title="Set",
+                )
+            ]
+        )
+        item = app.state.repository.dequeue_next()
+        assert item is not None
+
+        app.state.repository.mark_playback_finished(created[0].id, QueueStatus.completed)
+
+        history_resp = client.get("/api/history")
+        assert history_resp.status_code == 200
+        payload = history_resp.json()
+        assert payload[0]["video_id"] is None
+        assert payload[0]["source_site"] == "Mixcloud"
+
+
 def test_play_now_endpoint_triggers_skip(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:

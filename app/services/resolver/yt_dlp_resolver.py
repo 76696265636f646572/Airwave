@@ -19,6 +19,32 @@ SEARCH_PREFIXES = {
     "vimeo": "vimsearch",
 }
 
+GENERIC_COLLECTION_KEYWORDS = (
+    "playlist",
+    "playlists",
+    "album",
+    "albums",
+    "channel",
+    "channels",
+    "artist",
+    "artists",
+    "collection",
+    "collections",
+    "show",
+    "shows",
+    "podcast",
+    "podcasts",
+    "likes",
+    "tracks",
+    "videos",
+    "uploads",
+    "sets",
+    "set",
+    "tag",
+    "tags",
+    "music",
+)
+
 
 class YtDlpResolver(SourceResolver):
     def __init__(
@@ -31,6 +57,91 @@ class YtDlpResolver(SourceResolver):
         self.binary_path = binary_path
         self.blocked_domains = [d.lower().strip() for d in (blocked_domains or []) if d.strip()]
         self.blocked_extractors = [e.lower().strip() for e in (blocked_extractors or []) if e.strip()]
+
+    def _host(self, url: str) -> str:
+        host = (urlparse(url).hostname or "").lower()
+        if host.startswith("www."):
+            return host[4:]
+        return host
+
+    def _looks_like_collection_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        host = self._host(url)
+        path = (parsed.path or "").lower()
+        query = parse_qs(parsed.query or "")
+
+        # Preserve existing behavior: YouTube watch pages always represent a single video.
+        if is_youtube_url(url):
+            if "watch" in path:
+                return False
+            if "/playlist" in path and "list" in query:
+                return True
+            if path.startswith("/@") and path.count("/") >= 1:
+                return True
+            if path.startswith(("/channel/", "/c/", "/user/")):
+                return True
+            segments = [segment for segment in path.split("/") if segment]
+            if len(segments) == 1 and segments[0] not in {"watch", "playlist", "results", "feed", "shorts", "live"}:
+                return True
+
+        if host.endswith("vimeo.com") and (path.startswith("/showcase/") or path.startswith("/channels/")):
+            return True
+        if host.endswith("dailymotion.com") and path.startswith("/playlist/"):
+            return True
+        if host.endswith("bilibili.com") and (
+            path.startswith("/bangumi/play/ss")
+            or "/channel/collectiondetail" in path
+            or "sid" in query
+        ):
+            return True
+        if host.endswith("soundcloud.com") and (
+            "/sets/" in path
+            or path.endswith("/tracks")
+            or path.endswith("/likes")
+            or path.count("/") == 2
+        ):
+            return True
+        if host.endswith("bandcamp.com") and (path.startswith("/album/") or path.startswith("/music")):
+            return True
+        if host.endswith("audiomack.com") and ("/album/" in path or "/playlist/" in path):
+            return True
+        if host.endswith("mixcloud.com") and ("/playlists/" in path or path.startswith("/tag/")):
+            return True
+        if host.endswith("hearthis.at") and ("/set/" in path or path.count("/") == 2):
+            return True
+        if host.endswith("boomplay.com") and (path.startswith("/albums/") or path.startswith("/playlists/")):
+            return True
+        if host.endswith("anghami.com") and (path.startswith("/playlist/") or path.startswith("/album/")):
+            return True
+        if host.endswith("jamendo.com") and (path.startswith("/album/") or path.startswith("/artist/")):
+            return True
+        if host.endswith("archive.org") and path.startswith("/details/"):
+            return True
+        if host.endswith("freemusicarchive.org") and (path.startswith("/music/") or path.startswith("/curator/")):
+            return True
+        if host.endswith("house-mixes.com") and ("/profile/" in path):
+            return True
+        if host.endswith("1001tracklists.com") and (path.startswith("/tracklist/") or path.startswith("/dj/")):
+            return True
+        if host.endswith("nts.live") and path.startswith("/shows/"):
+            return True
+        if host.endswith("podcasts.apple.com") and "/podcast/" in path:
+            return True
+        if host.endswith("tunein.com") and path.startswith("/podcasts/"):
+            return True
+        if host.endswith("podbean.com"):
+            return True
+        if host.endswith("spreaker.com") and path.startswith("/show/"):
+            return True
+        if host.endswith("tiktok.com") and ("/@".lower() in path and ("/playlist/" in path or path.count("/") == 2)):
+            return True
+        if host.endswith("twitch.tv") and path.endswith("/videos"):
+            return True
+        if host.endswith("facebook.com") and path.endswith("/videos"):
+            return True
+
+        segments = [segment for segment in path.split("/") if segment]
+        return any(segment in GENERIC_COLLECTION_KEYWORDS for segment in segments)
 
     def normalize_url(self, url: str) -> str:
         parsed = urlparse(url)
@@ -69,9 +180,14 @@ class YtDlpResolver(SourceResolver):
         webpage_url = entry.get("webpage_url")
         if isinstance(webpage_url, str) and webpage_url.startswith("http"):
             return webpage_url
+        original_url = entry.get("original_url")
+        if isinstance(original_url, str) and original_url.startswith("http"):
+            return original_url
         raw_url = entry.get("url")
         if isinstance(raw_url, str) and raw_url.startswith("http"):
             return raw_url
+        if isinstance(raw_url, str) and raw_url.startswith("//"):
+            return f"https:{raw_url}"
         video_id = entry.get("id")
         extractor = (entry.get("extractor") or entry.get("extractor_key") or "").lower()
         if video_id and ("youtube" in extractor):
@@ -82,12 +198,10 @@ class YtDlpResolver(SourceResolver):
         normalized = self.normalize_url(url)
         self._ensure_domain_allowed(normalized)
         parsed = urlparse(normalized)
-        query = parse_qs(parsed.query)
-        if is_youtube_url(normalized):
-            if "watch" in parsed.path:
-                return False
-            if "/playlist" in parsed.path and "list" in query:
-                return True
+        if is_youtube_url(normalized) and "watch" in (parsed.path or "").lower():
+            return False
+        if self._looks_like_collection_url(normalized):
+            return True
         data = self._run_json("--flat-playlist", "--skip-download", "-J", normalized)
         entries = data.get("entries")
         if not isinstance(entries, list) or not entries:

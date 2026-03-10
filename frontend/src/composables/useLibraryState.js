@@ -52,7 +52,7 @@ export function useLibraryState() {
         body: JSON.stringify({ url }),
       });
       if (result?.type === "playlist") {
-        notifySuccess("Playlist queued", `${result.count || 0} playlist items added to queue.`);
+        notifySuccess("Collection queued", `${result.count || 0} items added to queue.`);
       } else {
         notifySuccess("Added to queue", "URL added successfully.");
       }
@@ -69,7 +69,7 @@ export function useLibraryState() {
         body: JSON.stringify({ url }),
       });
       if (result?.type === "playlist") {
-        notifySuccess("Playing playlist", "Queue replaced and playlist playback started.");
+        notifySuccess("Playing collection", "Queue replaced and playback started.");
       } else {
         notifySuccess("Playing now", "URL queued and playback started.");
       }
@@ -85,7 +85,7 @@ export function useLibraryState() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      notifySuccess("Playlist imported", `${result.count || 0} items saved to playlist library.`);
+      notifySuccess("Collection imported", `${result.count || 0} items saved to library.`);
     } catch (error) {
       notifyError("Could not import playlist", error);
     }

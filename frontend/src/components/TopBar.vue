@@ -80,15 +80,13 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { canonicalCollectionUrl, classifyCollectionUrl, collectionActionLabels } from "../composables/collectionUrl";
 import { useLibraryState } from "../composables/useLibraryState";
 import { useUiState } from "../composables/useUiState";
 
-const URL_ACTIONS = {
+const BASE_ACTIONS = {
   play: { id: "play", label: "Play" },
   addUrl: { id: "addUrl", label: "Add URL" },
-  queuePlaylist: { id: "queuePlaylist", label: "Queue Playlist" },
-  playPlaylist: { id: "playPlaylist", label: "Play Playlist" },
-  importPlaylist: { id: "importPlaylist", label: "Import playlist" },
 };
 
 const urlInput = ref("");
@@ -98,33 +96,29 @@ const route = useRoute();
 const { addUrl, playUrl, importPlaylistUrl, queue } = useLibraryState();
 const { searchText, onSearchTextChange, onSearch } = useUiState();
 
-/** Playlist page URL (playlist?list=...) or watch URL with list= (e.g. ...watch?v=...&list=...). */
-const isPlaylistUrl = computed(() => {
-  const url = urlInput.value.trim();
-  if (!url) return false;
-  return url.includes("list=");
-});
+const collectionInfo = computed(() => classifyCollectionUrl(urlInput.value));
+const collectionLabels = computed(() => collectionActionLabels(collectionInfo.value));
 
 /** Available actions for current URL type. */
 const availableUrlActions = computed(() => {
-  if (isPlaylistUrl.value) {
+  if (collectionInfo.value.isCollection) {
     return [
-      URL_ACTIONS.play,
-      URL_ACTIONS.addUrl,
-      URL_ACTIONS.queuePlaylist,
-      URL_ACTIONS.playPlaylist,
-      URL_ACTIONS.importPlaylist,
+      BASE_ACTIONS.play,
+      BASE_ACTIONS.addUrl,
+      { id: "queueCollection", label: collectionLabels.value.queue },
+      { id: "playCollection", label: collectionLabels.value.play },
+      { id: "importCollection", label: collectionLabels.value.import },
     ];
   }
-  return [URL_ACTIONS.play, URL_ACTIONS.addUrl];
+  return [BASE_ACTIONS.play, BASE_ACTIONS.addUrl];
 });
 
-/** Default action when queue has items: show queue button (Add URL / Queue Playlist); otherwise Play. */
+/** Default action when queue has items: show queue action (Add URL / Queue collection); otherwise Play. */
 const defaultUrlAction = computed(() => {
   const actions = availableUrlActions.value;
   const ids = actions.map((a) => a.id);
   if (queue.value.length > 0) {
-    if (ids.includes("queuePlaylist")) return "queuePlaylist";
+    if (ids.includes("queueCollection")) return "queueCollection";
     if (ids.includes("addUrl")) return "addUrl";
   }
   return "play";
@@ -145,7 +139,7 @@ watch(
 );
 
 const urlActionLabel = computed(() => {
-  const action = Object.values(URL_ACTIONS).find((a) => a.id === selectedUrlAction.value);
+  const action = availableUrlActions.value.find((a) => a.id === selectedUrlAction.value);
   return action?.label ?? "Play";
 });
 
@@ -167,13 +161,13 @@ function runAction(actionId) {
     case "addUrl":
       emitAddUrl();
       break;
-    case "queuePlaylist":
+    case "queueCollection":
       emitQueueUrl();
       break;
-    case "playPlaylist":
+    case "playCollection":
       emitPlayPlaylist();
       break;
-    case "importPlaylist":
+    case "importCollection":
       emitImportPlaylist();
       break;
     default:
@@ -185,21 +179,8 @@ function runSelectedAction() {
   runAction(selectedUrlAction.value);
 }
 
-/** Canonical playlist URL for import: extract list id and use YouTube playlist path when needed. */
 function getImportPlaylistUrl(url) {
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  if (trimmed.includes("/playlist") && trimmed.includes("list=")) return trimmed;
-  try {
-    const parsed = new URL(trimmed);
-    const listId = parsed.searchParams.get("list");
-    if (!listId) return trimmed;
-    if (/youtube\.com|youtu\.be/i.test(parsed.hostname))
-      return `https://www.youtube.com/playlist?list=${listId}`;
-  } catch (_) {
-    /* ignore */
-  }
-  return trimmed;
+  return canonicalCollectionUrl(url);
 }
 
 function consumeInputUrl() {
@@ -224,14 +205,14 @@ function emitQueueUrl() {
   addUrl(urlToAdd);
 }
 
-/** Queue the URL as a single item (no playlist). Used when input has list= but user wants to add just this video. */
+/** Queue the URL as a single item, even when collection actions are available. */
 function emitAddUrl() {
   const url = consumeInputUrl();
   if (!url) return;
   addUrl(url);
 }
 
-/** Play the full playlist (canonical playlist URL). */
+/** Play the full collection URL when available. */
 function emitPlayPlaylist() {
   const url = consumeInputUrl();
   if (!url) return;

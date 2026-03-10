@@ -70,6 +70,29 @@ class FakeLiveResolver(FakeYtDlp):
         )
 
 
+class FakeGenericPlaylistResolver(FakeYtDlp):
+    def __init__(self) -> None:
+        super().__init__(playlist=True)
+
+    def preview_playlist(self, url: str) -> PlaylistPreview:
+        return PlaylistPreview(
+            source_url=url,
+            title="mixes",
+            channel="dj",
+            entries=[
+                {
+                    "source_url": "https://www.mixcloud.com/someuser/some-show/",
+                    "normalized_url": "https://www.mixcloud.com/someuser/some-show/",
+                    "title": "Mix 1",
+                    "channel": "DJ A",
+                    "duration_seconds": 1800,
+                    "thumbnail_url": None,
+                }
+            ],
+            thumbnail_url=None,
+        )
+
+
 def test_add_single_video(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/playlist.db")
     repo.init_db()
@@ -200,3 +223,15 @@ def test_add_live_stream_to_playlist_with_title(tmp_path):
 
     entry = service.add_item_to_playlist(created["id"], "https://radio.example/live", title="Station One")
     assert entry["title"] == "Station One"
+
+
+def test_playlist_entries_for_non_youtube_urls_keep_video_id_none(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/generic_playlist.db")
+    repo.init_db()
+    service = PlaylistService(repo, FakeGenericPlaylistResolver())
+
+    imported = service.import_playlist("https://www.mixcloud.com/user/playlists/house/")
+    entries = service.list_playlist_entries(imported["playlist_id"])
+    assert len(entries) == 1
+    assert entries[0]["video_id"] is None
+    assert entries[0]["source_site"] == "Mixcloud"
