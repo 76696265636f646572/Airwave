@@ -44,6 +44,7 @@ class Repository:
     def init_db(self) -> None:
         Base.metadata.create_all(self.engine)
         self._ensure_playlist_thumbnail_column()
+        self._ensure_play_history_thumbnail_column()
 
     def _ensure_playlist_thumbnail_column(self) -> None:
         # Existing SQLite databases need an explicit ALTER TABLE when new
@@ -55,6 +56,15 @@ class Repository:
             column_names = {row["name"] for row in column_rows}
             if "thumbnail_url" not in column_names:
                 conn.execute(text("ALTER TABLE playlists ADD COLUMN thumbnail_url TEXT"))
+
+    def _ensure_play_history_thumbnail_column(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with self.engine.begin() as conn:
+            column_rows = conn.execute(text("PRAGMA table_info(play_history)")).mappings().all()
+            column_names = {row["name"] for row in column_rows}
+            if "thumbnail_url" not in column_names:
+                conn.execute(text("ALTER TABLE play_history ADD COLUMN thumbnail_url TEXT"))
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -121,8 +131,29 @@ class Repository:
             session.flush()
             return created
 
+    @staticmethod
+    def _normalize_playing_items(session: Session, *, keep_latest: bool) -> None:
+        playing_items = list(
+            session.scalars(
+                select(QueueItem)
+                .where(QueueItem.status == QueueStatus.playing)
+                .order_by(QueueItem.updated_at.desc(), QueueItem.id.desc())
+            ).all()
+        )
+        if not playing_items:
+            return
+        if keep_latest and len(playing_items) == 1:
+            return
+
+        keep_id = playing_items[0].id if keep_latest else None
+        for item in playing_items:
+            if keep_id is not None and item.id == keep_id:
+                continue
+            item.status = QueueStatus.skipped
+
     def list_queue(self) -> list[QueueItem]:
-        with self.session() as session:
+        with self._queue_lock, self.session() as session:
+            self._normalize_playing_items(session, keep_latest=True)
             stmt: Select[tuple[QueueItem]] = select(QueueItem).where(
                 QueueItem.status.in_([QueueStatus.queued, QueueStatus.playing])
             ).order_by(QueueItem.status.asc(), QueueItem.queue_position.asc())
@@ -321,8 +352,14 @@ class Repository:
             count = session.scalar(select(func.count(QueueItem.id)).where(QueueItem.status == QueueStatus.queued))
             return int(count or 0)
 
+    def list_queued_ids(self) -> list[int]:
+        with self.session() as session:
+            stmt = select(QueueItem.id).where(QueueItem.status == QueueStatus.queued).order_by(QueueItem.queue_position.asc())
+            return [int(item_id) for item_id in session.scalars(stmt).all()]
+
     def dequeue_next(self) -> QueueItem | None:
         with self._queue_lock, self.session() as session:
+            self._normalize_playing_items(session, keep_latest=False)
             next_item = session.scalar(
                 select(QueueItem)
                 .where(QueueItem.status == QueueStatus.queued)
@@ -353,6 +390,7 @@ class Repository:
                     queue_item_id=item.id,
                     title=item.title,
                     source_url=item.source_url,
+                    thumbnail_url=item.thumbnail_url,
                     status=status.value,
                     error_message=error_message,
                     finished_at=datetime.now(timezone.utc),
@@ -388,6 +426,38 @@ class Repository:
             bounded_target = max(0, min(new_position, len(queue_items)))
             queue_items.insert(bounded_target, item)
             for pos, queue_item in enumerate(queue_items, start=1):
+                queue_item.queue_position = pos
+            return True
+
+    def reorder_queued_items(self, item_ids: list[int]) -> bool:
+        with self._queue_lock, self.session() as session:
+            queue_items = list(
+                session.scalars(
+                    select(QueueItem)
+                    .where(QueueItem.status == QueueStatus.queued)
+                    .order_by(QueueItem.queue_position.asc())
+                ).all()
+            )
+            if not queue_items:
+                return False
+
+            items_by_id = {item.id: item for item in queue_items}
+            reordered: list[QueueItem] = []
+            seen_ids: set[int] = set()
+
+            for item_id in item_ids:
+                item = items_by_id.get(item_id)
+                if item is None or item.id in seen_ids:
+                    continue
+                reordered.append(item)
+                seen_ids.add(item.id)
+
+            for item in queue_items:
+                if item.id in seen_ids:
+                    continue
+                reordered.append(item)
+
+            for pos, queue_item in enumerate(reordered, start=1):
                 queue_item.queue_position = pos
             return True
 
