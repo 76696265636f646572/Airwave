@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from typing import Any
 
 from app.services.resolver.base import PlaylistPreview, ResolvedTrack, SourceResolver
 from app.services.resolver.direct_resolver import DirectUrlResolver
 from app.services.resolver.yt_dlp_resolver import YtDlpResolver
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SEARCHABLE_SITES = [
     "youtube", "vimeo", "dailymotion", "bilibili", "peertube", "soundcloud", "bandcamp",
@@ -35,7 +38,15 @@ class CompositeSourceResolver(SourceResolver):
         ]
 
     def _resolver_for_url(self, url: str) -> SourceResolver:
-        if self.direct_resolver.can_handle_url(url):
+        direct = self.direct_resolver.can_handle_url(url)
+        resolver_name = "direct" if direct else "yt_dlp"
+        logger.info(
+            "source_resolver: _resolver_for_url url=%s -> %s",
+            url[:200],
+            resolver_name,
+            extra={"mytube_resolver": "composite", "action": "resolver_for_url", "resolver": resolver_name},
+        )
+        if direct:
             return self.direct_resolver
         return self.yt_dlp_resolver
 
