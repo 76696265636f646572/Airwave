@@ -96,12 +96,19 @@
       <PlayerBar v-else />
 
       <FullScreenPlayer v-if="isMobile" />
+
+      <audio
+        ref="audioEl"
+        class="hidden"
+        :src="playbackState.stream_url"
+        preload="none"
+      />
     </div>
   </UApp>
 </template>
 
 <script setup>
-import { onMounted } from "vue";
+import { onMounted, provide, ref } from "vue";
 import { useRoute } from "vue-router";
 
 import FullScreenPlayer from "./components/FullScreenPlayer.vue";
@@ -113,9 +120,10 @@ import SidebarPlaylists from "./components/SidebarPlaylists.vue";
 import SonosPanel from "./components/SonosPanel.vue";
 import TopBar from "./components/TopBar.vue";
 import { useBreakpoint } from "./composables/useBreakpoint";
+import { useLocalPlayback } from "./composables/useLocalPlayback";
 import { initializeLibraryState } from "./composables/useLibraryState";
 import { initializeNotifications } from "./composables/useNotifications";
-import { initializePlaybackState } from "./composables/usePlaybackState";
+import { initializePlaybackState, usePlaybackState } from "./composables/usePlaybackState";
 import { initializeSonosState } from "./composables/useSonosState";
 import {
   MOBILE_VIEW_HOME,
@@ -129,6 +137,20 @@ import { initializeTheme } from "./composables/useTheme";
 
 const route = useRoute();
 const { isMobile } = useBreakpoint();
+const { playbackState } = usePlaybackState();
+const audioEl = ref(null);
+const {
+  startLocalPlayback,
+  stopLocalPlayback,
+  isLocalPlaybackActive,
+} = useLocalPlayback(audioEl);
+
+provide("localPlayback", {
+  startLocalPlayback,
+  stopLocalPlayback,
+  isLocalPlaybackActive,
+});
+
 const {
   sidebarView,
   activeQueueTab,
