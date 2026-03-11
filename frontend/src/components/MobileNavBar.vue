@@ -5,8 +5,8 @@
   >
     <UButton
       type="button"
-      :color="mobileView === MOBILE_VIEW_HOME ? 'primary' : 'neutral'"
-      :variant="mobileView === MOBILE_VIEW_HOME ? 'soft' : 'ghost'"
+      :color="isActiveHome ? 'primary' : 'neutral'"
+      :variant="isActiveHome ? 'soft' : 'ghost'"
       class="flex min-h-[2.75rem] min-w-[2.75rem] flex-col gap-0.5 p-2"
       aria-label="Home"
       @click="goHome"
@@ -88,8 +88,10 @@ const router = useRouter();
 const route = useRoute();
 const { mobileView } = useUiState();
 
-const isActiveSettings = computed(() => route.path === "/settings");
+/** Home is active only when showing the index route, not when Search or Settings (which also use home pane). */
+const isActiveHome = computed(() => mobileView.value === MOBILE_VIEW_HOME && route.path === "/");
 const isActiveSearch = computed(() => route.path === "/search");
+const isActiveSettings = computed(() => route.path === "/settings");
 
 function goHome() {
   mobileView.value = MOBILE_VIEW_HOME;
