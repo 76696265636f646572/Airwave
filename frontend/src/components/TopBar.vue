@@ -41,7 +41,7 @@
         </UButton>
       </div>
     </div>
-    <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" @submit.prevent="emitQueueUrl">
+    <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" @submit.prevent="runPrimaryAction">
       <input
         v-model="urlInput"
         type="url"
@@ -49,47 +49,16 @@
         required
         class="h-10 w-full min-w-0 flex-1 rounded-md border px-3 text-sm surface-input"
       />
-      <div class="flex w-full gap-2 sm:w-auto">
-        <template v-if="isPlaylistUrl">
-          <UButton
-            type="button"
-            color="success"
-            variant="solid"
-            size="md"
-            class="flex-1 sm:flex-none"
-            @click="emitImportPlaylist"
-          >
-            Import playlist
+      <div class="flex w-full sm:w-auto">
+        <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 rounded-r-none sm:flex-none">
+          {{ primaryActionLabel }}
+        </UButton>
+        <UDropdownMenu :items="actionDropdownItems">
+          <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
+            <span aria-hidden="true">|</span>
+            <UIcon name="i-lucide-chevron-down" class="size-4" />
           </UButton>
-          <UButton type="submit" color="neutral" variant="outline" size="md" class="flex-1 sm:flex-none">
-            Queue Playlist
-          </UButton>
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="md"
-            class="flex-1 sm:flex-none"
-            @click="emitPlayUrl"
-          >
-            Play Playlist
-          </UButton>
-        </template>
-        <template v-else>
-          <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 sm:flex-none">
-            Add URL
-          </UButton>
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="md"
-            class="flex-1 sm:flex-none"
-            @click="emitPlayUrl"
-          >
-            Play URL
-          </UButton>
-        </template>
+        </UDropdownMenu>
       </div>
     </form>
     </template>
@@ -125,7 +94,7 @@
       <template #content>
         <div class="p-4">
           <h2 class="text-lg font-semibold">Add URL</h2>
-          <form class="mt-3 flex flex-col gap-3" @submit.prevent="submitAddUrlSheet">
+          <form class="mt-3 flex flex-col gap-3" @submit.prevent="runPrimaryActionThenClose">
             <input
               v-model="urlInput"
               type="url"
@@ -133,26 +102,16 @@
               required
               class="h-11 w-full rounded-md border px-3 text-sm surface-input"
             />
-            <div class="flex flex-wrap gap-2">
-              <template v-if="isPlaylistUrl">
-                <UButton type="button" color="success" variant="solid" class="flex-1" @click="emitImportPlaylistThenClose">
-                  Import playlist
+            <div class="flex w-full">
+              <UButton type="submit" color="primary" variant="solid" class="flex-1 rounded-r-none">
+                {{ primaryActionLabel }}
+              </UButton>
+              <UDropdownMenu :items="actionDropdownItems">
+                <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
+                  <span aria-hidden="true">|</span>
+                  <UIcon name="i-lucide-chevron-down" class="size-4" />
                 </UButton>
-                <UButton type="button" color="primary" variant="solid" class="flex-1" @click="emitQueueUrlThenClose">
-                  Queue Playlist
-                </UButton>
-                <UButton type="button" color="neutral" variant="outline" class="flex-1" @click="emitPlayUrlThenClose">
-                  Play Playlist
-                </UButton>
-              </template>
-              <template v-else>
-                <UButton type="submit" color="primary" variant="solid" class="flex-1">
-                  Add URL
-                </UButton>
-                <UButton type="button" color="neutral" variant="outline" class="flex-1" @click="emitPlayUrlThenClose">
-                  Play URL
-                </UButton>
-              </template>
+              </UDropdownMenu>
             </div>
           </form>
         </div>
@@ -175,15 +134,112 @@ const urlInput = ref("");
 const addUrlSheetOpen = ref(false);
 const router = useRouter();
 const route = useRoute();
-const { addUrl, playUrl, importPlaylistUrl } = useLibraryState();
+const { queue, addUrl, playUrl, importPlaylistUrl } = useLibraryState();
 const { searchText, onSearchTextChange, onYoutubeSearch } = useUiState();
 
-/** Playlist page URL (playlist?list=...). Watch URLs are treated as single video. */
-const isPlaylistUrl = computed(() => {
-  const url = urlInput.value.trim();
-  if (!url) return false;
-  return url.includes("/playlist") && url.includes("list=");
+const ACTION_IDS = {
+  PLAY_URL: "play-url",
+  PLAY_PLAYLIST: "play-playlist",
+  QUEUE_PLAYLIST: "queue-playlist",
+  IMPORT_PLAYLIST: "import-playlist",
+  ADD_URL: "add-url",
+};
+
+function parseInputUrl(rawUrl) {
+  const url = rawUrl.trim();
+  if (!url) return null;
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+function hasPlaylistId(rawUrl) {
+  const parsed = parseInputUrl(rawUrl);
+  if (parsed) {
+    return !!parsed.searchParams.get("list");
+  }
+  return rawUrl.includes("list=");
+}
+
+function isCanonicalPlaylistPath(rawUrl) {
+  const parsed = parseInputUrl(rawUrl);
+  if (!parsed) return false;
+  return parsed.pathname.includes("/playlist") && !!parsed.searchParams.get("list");
+}
+
+function getCanonicalPlaylistUrl(rawUrl) {
+  const parsed = parseInputUrl(rawUrl);
+  if (!parsed) return rawUrl;
+
+  const playlistId = parsed.searchParams.get("list");
+  if (!playlistId) return rawUrl;
+
+  const host = parsed.hostname.toLowerCase();
+  const knownYoutubeHost = host === "youtube.com"
+    || host === "www.youtube.com"
+    || host === "m.youtube.com"
+    || host === "music.youtube.com"
+    || host === "youtu.be"
+    || host === "www.youtu.be";
+  if (!knownYoutubeHost) return rawUrl;
+
+  return `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+}
+
+const actionContext = computed(() => {
+  const rawUrl = urlInput.value.trim();
+  if (!rawUrl) return "single";
+  if (isCanonicalPlaylistPath(rawUrl)) return "canonical-playlist";
+  if (hasPlaylistId(rawUrl)) return "playlist-capable";
+  return "single";
 });
+
+const defaultActionId = computed(() => {
+  const hasQueueItems = Array.isArray(queue.value) && queue.value.length > 0;
+  if (hasQueueItems) {
+    if (actionContext.value === "canonical-playlist") {
+      return ACTION_IDS.QUEUE_PLAYLIST;
+    }
+    return ACTION_IDS.ADD_URL;
+  }
+
+  return actionContext.value === "canonical-playlist" ? ACTION_IDS.PLAY_PLAYLIST : ACTION_IDS.PLAY_URL;
+});
+
+const availableActions = computed(() => {
+  const base = [
+    { id: ACTION_IDS.PLAY_URL, label: "Play" },
+    { id: ACTION_IDS.ADD_URL, label: "Add URL" },
+  ];
+
+  if (actionContext.value === "playlist-capable" || actionContext.value === "canonical-playlist") {
+    return [
+      { id: ACTION_IDS.PLAY_URL, label: "Play" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist" },
+      { id: ACTION_IDS.ADD_URL, label: "Add URL" },
+    ];
+  }
+
+  return base;
+});
+
+const primaryActionLabel = computed(() => {
+  if (defaultActionId.value === ACTION_IDS.QUEUE_PLAYLIST) return "Queue Playlist";
+  if (defaultActionId.value === ACTION_IDS.ADD_URL) return "Add URL";
+  if (defaultActionId.value === ACTION_IDS.PLAY_PLAYLIST) return "Play Playlist";
+  return "Play";
+});
+
+const actionDropdownItems = computed(() => [[
+  ...availableActions.value.map((action) => ({
+    label: action.label,
+    onSelect: () => runAction(action.id, addUrlSheetOpen.value),
+  })),
+]]);
 
 function consumeInputUrl() {
   const url = urlInput.value.trim();
@@ -192,41 +248,33 @@ function consumeInputUrl() {
   return url;
 }
 
-function emitImportPlaylist() {
-  const url = consumeInputUrl();
-  if (!url) return;
-  importPlaylistUrl(url);
+function runAction(actionId, closeAfter = false) {
+  const rawUrl = consumeInputUrl();
+  if (!rawUrl) return;
+
+  const canonicalPlaylistUrl = getCanonicalPlaylistUrl(rawUrl);
+  if (actionId === ACTION_IDS.PLAY_PLAYLIST) {
+    playUrl(canonicalPlaylistUrl);
+  } else if (actionId === ACTION_IDS.QUEUE_PLAYLIST) {
+    addUrl(canonicalPlaylistUrl);
+  } else if (actionId === ACTION_IDS.IMPORT_PLAYLIST) {
+    importPlaylistUrl(canonicalPlaylistUrl);
+  } else if (actionId === ACTION_IDS.ADD_URL) {
+    addUrl(rawUrl);
+  } else {
+    playUrl(rawUrl);
+  }
+
+  if (closeAfter) {
+    addUrlSheetOpen.value = false;
+  }
 }
 
-function emitQueueUrl() {
-  const url = consumeInputUrl();
-  if (!url) return;
-  addUrl(url);
+function runPrimaryAction() {
+  runAction(defaultActionId.value, false);
 }
 
-function emitPlayUrl() {
-  const url = consumeInputUrl();
-  if (!url) return;
-  playUrl(url);
-}
-
-function submitAddUrlSheet() {
-  emitQueueUrl();
-  addUrlSheetOpen.value = false;
-}
-
-function emitQueueUrlThenClose() {
-  emitQueueUrl();
-  addUrlSheetOpen.value = false;
-}
-
-function emitPlayUrlThenClose() {
-  emitPlayUrl();
-  addUrlSheetOpen.value = false;
-}
-
-function emitImportPlaylistThenClose() {
-  emitImportPlaylist();
-  addUrlSheetOpen.value = false;
+function runPrimaryActionThenClose() {
+  runAction(defaultActionId.value, true);
 }
 </script>
