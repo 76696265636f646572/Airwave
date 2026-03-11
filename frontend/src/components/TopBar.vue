@@ -104,18 +104,9 @@
           color="neutral"
           variant="ghost"
           icon="i-lucide-plus-circle"
-          class="min-h-[2.75rem] min-w-[2.75rem]"
+          class="h-10"
           aria-label="Add URL"
           @click="addUrlSheetOpen = true"
-        />
-        <UButton
-          type="button"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-settings"
-          class="min-h-[2.75rem] min-w-[2.75rem]"
-          aria-label="Settings"
-          @click="router.push('/settings')"
         />
       </div>
     </div>
