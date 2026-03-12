@@ -144,3 +144,20 @@ body {
 .playlist-card {
   border-color: var(--app-border);
 }
+
+/* Homepage: theme-aware section and chip styling */
+.home-page .home-section {
+  border-color: var(--app-border);
+}
+
+.home-page .home-stat-chip {
+  border-color: var(--app-border);
+}
+
+.home-page .home-playlist-card {
+  border-color: var(--app-border);
+}
+
+.home-page .home-now-playing {
+  border-color: var(--app-border);
+}
