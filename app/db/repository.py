@@ -364,6 +364,31 @@ class Repository:
                 playlist.entry_count -= 1
             return True
 
+    def reorder_playlist_entry(self, entry_id: int, new_position: int) -> bool:
+        with self.session() as session:
+            entry = session.get(PlaylistEntry, entry_id)
+            if entry is None:
+                return False
+            playlist_id = entry.playlist_id
+            entries = list(
+                session.scalars(
+                    select(PlaylistEntry)
+                    .where(PlaylistEntry.playlist_id == playlist_id)
+                    .order_by(PlaylistEntry.position.asc())
+                ).all()
+            )
+            if not entries:
+                return False
+            idx = next((i for i, e in enumerate(entries) if e.id == entry_id), None)
+            if idx is None:
+                return False
+            item = entries.pop(idx)
+            bounded_target = max(0, min(new_position, len(entries)))
+            entries.insert(bounded_target, item)
+            for pos, e in enumerate(entries, start=1):
+                e.position = pos
+            return True
+
     def has_queued_items(self) -> bool:
         with self.session() as session:
             count = session.scalar(select(func.count(QueueItem.id)).where(QueueItem.status == QueueStatus.queued))

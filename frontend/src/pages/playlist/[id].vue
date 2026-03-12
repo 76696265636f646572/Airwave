@@ -12,7 +12,18 @@
 
       <div v-if="!entries.length" class="mt-4 text-sm text-muted">This playlist has no entries yet.</div>
 
-      <ul v-else class="mt-4 space-y-2">
+      <VueDraggable
+        v-else
+        v-model="entries"
+        tag="ul"
+        class="mt-4 space-y-2"
+        :animation="150"
+        :delay="200"
+        :delay-on-touch-only="true"
+        ghost-class="queue-drag-ghost"
+        chosen-class="queue-drag-chosen"
+        @end="onReorderEnd"
+      >
         <li v-for="entry in entries" :key="entry.id">
           <Song
             :item="entry"
@@ -23,7 +34,7 @@
             @deleted="loadPlaylist()"
           />
         </li>
-      </ul>
+      </VueDraggable>
     </template>
   </section>
 </template>
@@ -32,11 +43,13 @@
 import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
+import { VueDraggable } from "vue-draggable-plus";
+
 import Song from "../../components/Song.vue";
 import { fetchJson } from "../../composables/useApi";
 import { useLibraryState } from "../../composables/useLibraryState";
 
-const { playlists } = useLibraryState();
+const { playlists, reorderPlaylistEntry } = useLibraryState();
 
 const route = useRoute();
 const playlist = ref({});
@@ -98,6 +111,14 @@ async function loadPlaylist() {
       loading.value = false;
     }
   }
+}
+
+function onReorderEnd(evt) {
+  const { oldIndex, newIndex } = evt;
+  if (oldIndex === newIndex) return;
+  const entry = entries.value[newIndex];
+  if (!entry?.id) return;
+  reorderPlaylistEntry(entry.id, newIndex);
 }
 
 watch(

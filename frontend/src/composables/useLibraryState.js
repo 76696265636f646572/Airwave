@@ -194,6 +194,18 @@ export function useLibraryState() {
     }
   }
 
+  async function reorderPlaylistEntry(entryId, newPosition) {
+    try {
+      await fetchJson(`/api/playlists/entries/${entryId}/reorder`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ new_position: newPosition }),
+      });
+    } catch (error) {
+      notifyError("Could not reorder playlist", error);
+    }
+  }
+
   async function skipCurrent() {
     try {
       await fetchJson("/api/queue/skip", { method: "POST" });
@@ -277,6 +289,7 @@ export function useLibraryState() {
     clearHistory,
     clearQueue,
     reorderQueueItem,
+    reorderPlaylistEntry,
     skipCurrent,
     previousTrack,
     togglePause,

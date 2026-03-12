@@ -523,6 +523,15 @@ def delete_playlist_entry(entry_id: int, request: Request) -> Response:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@api_router.post("/playlists/entries/{entry_id}/reorder")
+def reorder_playlist_entry(entry_id: int, payload: ReorderRequest, request: Request) -> dict[str, bool]:
+    try:
+        _services(request)["playlist"].reorder_playlist_entry(entry_id, payload.new_position)
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @api_router.websocket("/ws/events")
 async def websocket_events(websocket: WebSocket) -> None:
     broker = websocket.app.state.ui_events
