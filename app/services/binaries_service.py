@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,8 +74,16 @@ def _parse_yt_dlp_version(out: str) -> str:
 def _parse_ffmpeg_version(out: str) -> str:
     # "ffmpeg version 6.1.1 Copyright..." -> "6.1.1"
     match = re.search(r"ffmpeg version (\S+)", out or "")
-    return match.group(1) if match else (out.splitlines()[0].strip() if out else "")
-
+    if match:
+        try:
+            logger.info("Parsing ffmpeg version: %s", match.group(1))
+            # N-123313-g68046d0b33-20260309
+            date = re.search(r"(\d{8})", match.group(1))
+            if date:
+                return datetime.datetime.strptime(date.group(1), "%Y%m%d").strftime("%Y-%m-%d")
+            return match.group(1)
+        except ValueError:
+            return match.group(1)
 
 def _parse_deno_version(out: str) -> str:
     # "deno 2.0.0" or "deno 2.0.0 (release, x86_64-unknown-linux-gnu)"
