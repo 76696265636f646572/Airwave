@@ -167,3 +167,7 @@ class PlaylistService:
     def remove_playlist_entry(self, entry_id: int) -> None:
         if not self.repository.delete_playlist_entry(entry_id):
             raise ValueError("Playlist entry not found")
+
+    def reorder_playlist_entry(self, entry_id: int, new_position: int) -> None:
+        if not self.repository.reorder_playlist_entry(entry_id, new_position):
+            raise ValueError("Playlist entry not found")
