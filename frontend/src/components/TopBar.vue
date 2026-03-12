@@ -224,12 +224,12 @@ const primaryActionLabel = computed(() => {
   return "Play";
 });
 
-const actionDropdownItems = computed(() => [[
+const actionDropdownItems = computed(() => [
   ...availableActions.value.map((action) => ({
     label: action.label,
     onSelect: () => runAction(action.id, addUrlSheetOpen.value),
   })),
-]]);
+]);
 
 function consumeInputUrl() {
   const url = urlInput.value.trim();
