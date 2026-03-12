@@ -37,14 +37,15 @@ def test_parse_deno_version():
     assert _parse_deno_version("deno 1.42.0 (canary, x86_64-unknown-linux-gnu)") == "1.42.0"
 
 
-def test_is_managed_path(tmp_path):
+def test_is_managed_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     managed = bin_dir / "yt-dlp"
     managed.touch()
     assert _is_managed_path(str(managed)) is True
     assert _is_managed_path(str(bin_dir / "ffmpeg")) is True
-    # System path
+    # System path (not under cwd/bin)
     assert _is_managed_path("/usr/bin/ffmpeg") is False
     assert _is_managed_path("/usr/local/bin/deno") is False
 
@@ -115,9 +116,11 @@ def test_install_raises_for_unknown_binary():
 
 
 def test_install_raises_for_system_ffmpeg(monkeypatch):
-    monkeypatch.setattr("app.services.binaries_service.shutil.which", lambda x: "/usr/bin/ffmpeg" if x == "ffmpeg" else None)
-    monkeypatch.setattr("app.services.binaries_service._resolve_path", lambda x: "/usr/bin/ffmpeg")
-    monkeypatch.setattr("app.services.binaries_service._is_managed_path", lambda x: False)
+    """Install refuses when ffmpeg is resolved to a system path (e.g. /usr/bin/ffmpeg)."""
+    monkeypatch.setattr(
+        "app.services.binaries_service.shutil.which",
+        lambda x: "/usr/bin/ffmpeg" if x == "ffmpeg" else None,
+    )
     svc = BinariesService(yt_dlp_path="/bin/echo", ffmpeg_path="ffmpeg", deno_path="/bin/echo")
     with pytest.raises(RuntimeError, match="Cannot update system-installed ffmpeg"):
         svc.install("ffmpeg")
