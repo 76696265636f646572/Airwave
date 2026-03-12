@@ -111,6 +111,7 @@ async function saveYoutubeCookies() {
   try {
     const response = await fetchJson("/api/cookies/youtube", {
       method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ cookie_value: youtubeInput.value }),
     });
     if (response.ok) {
