@@ -12,7 +12,8 @@
           <div>
             <h3 class="text-lg font-semibold">YouTube</h3>
             <p class="text-sm text-muted mt-1">
-              Provide cookies for age-restricted or login-required videos.
+              Provide cookies for age-restricted or login-required videos. <br>
+              For more information, see the <a href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies" target="_blank" class="text-blue-500">yt-dlp documentation</a>.
             </p>
           </div>
           <span
