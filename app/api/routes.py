@@ -81,6 +81,16 @@ class InstallBinaryRequest(BaseModel):
     stop_stream_first: bool = False
 
 
+COOKIE_PROVIDERS = ("youtube",)  # Extensible: add "soundcloud", "vimeo", etc.
+
+
+class SetCookieRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1)
+
+
+
+
 def _services(request: Request) -> dict[str, Any]:
     return {
         "repo": request.app.state.repository,
@@ -262,6 +272,35 @@ def install_binary(payload: InstallBinaryRequest, request: Request) -> dict[str,
                 detail="binary_in_use",
             )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/settings/cookies")
+def get_cookie_settings(request: Request) -> dict[str, Any]:
+    """Return which providers have cookies configured (never the actual values)."""
+    repo = _services(request)["repo"]
+    providers: dict[str, bool] = {}
+    for p in COOKIE_PROVIDERS:
+        key = f"cookies:{p}"
+        providers[p] = bool(repo.get_setting(key))
+    return {"providers": providers}
+
+
+@api_router.put("/settings/cookies")
+def set_cookie(payload: SetCookieRequest, request: Request) -> dict[str, Any]:
+    if payload.provider not in COOKIE_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {payload.provider}")
+    repo = _services(request)["repo"]
+    repo.set_setting(f"cookies:{payload.provider}", payload.value)
+    return {"ok": True, "provider": payload.provider}
+
+
+@api_router.delete("/settings/cookies/{provider}")
+def delete_cookie(provider: str, request: Request) -> dict[str, Any]:
+    if provider not in COOKIE_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    repo = _services(request)["repo"]
+    repo.delete_setting(f"cookies:{provider}")
+    return {"ok": True, "provider": provider}
 
 
 @api_router.get("/state")

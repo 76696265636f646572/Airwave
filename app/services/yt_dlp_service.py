@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
 
@@ -45,8 +45,23 @@ class PlaylistPreview:
 
 
 class YtDlpService:
-    def __init__(self, binary_path: str) -> None:
+    def __init__(
+        self,
+        binary_path: str,
+        *,
+        get_cookie_path: Callable[[str], str | None] | None = None,
+    ) -> None:
         self.binary_path = binary_path
+        self._get_cookie_path = get_cookie_path
+
+    def _cookie_args(self, url: str) -> list[str]:
+        """Return ['--cookies', path] if cookies are configured for this URL's provider."""
+        if not self._get_cookie_path:
+            return []
+        path = self._get_cookie_path(url)
+        if not path:
+            return []
+        return ["--cookies", path]
 
     def normalize_url(self, url: str) -> str:
         parsed = urlparse(url)
@@ -69,8 +84,9 @@ class YtDlpService:
         query = parse_qs(parsed.query)
         return "/playlist" in parsed.path and "list" in query
 
-    def _run_json(self, *args: str) -> dict[str, Any]:
-        cmd = [self.binary_path, *args]
+    def _run_json(self, url_for_cookies: str | None, *args: str) -> dict[str, Any]:
+        cookie_args = self._cookie_args(url_for_cookies) if url_for_cookies else []
+        cmd = [self.binary_path, *cookie_args, *args]
         completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if completed.returncode != 0:
             raise YtDlpError(completed.stderr.strip() or "yt-dlp failed")
@@ -81,8 +97,10 @@ class YtDlpService:
 
     def spawn_audio_stream(self, url: str) -> subprocess.Popen[bytes]:
         normalized = self.normalize_url(url)
+        cookie_args = self._cookie_args(url)
         cmd = [
             self.binary_path,
+            *cookie_args,
             "--no-playlist",
             "-f",
             "bestaudio/best",
@@ -108,6 +126,7 @@ class YtDlpService:
     def resolve_video(self, url: str) -> ResolvedTrack:
         normalized = self.normalize_url(url)
         data = self._run_json(
+            url,
             "--no-playlist",
             "-f",
             "bestaudio/best",
@@ -131,6 +150,7 @@ class YtDlpService:
     def preview_playlist(self, url: str) -> PlaylistPreview:
         normalized = self.normalize_url(url)
         data = self._run_json(
+            url,
             "--flat-playlist",
             "--skip-download",
             "-J",
@@ -163,7 +183,14 @@ class YtDlpService:
 
     def search_videos(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(limit, 25))
-        payload = self._run_json("--flat-playlist", "--skip-download", "-J", f"ytsearch{bounded_limit}:{query}")
+        # YouTube search; use youtube URL for cookie resolution
+        payload = self._run_json(
+            "https://www.youtube.com",
+            "--flat-playlist",
+            "--skip-download",
+            "-J",
+            f"ytsearch{bounded_limit}:{query}",
+        )
         results: list[dict[str, Any]] = []
         for entry in payload.get("entries", []):
             if not isinstance(entry, dict):

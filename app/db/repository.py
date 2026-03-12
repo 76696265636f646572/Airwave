@@ -527,3 +527,11 @@ class Repository:
                 session.add(Setting(key=key, value=value))
             else:
                 setting.value = value
+
+    def delete_setting(self, key: str) -> bool:
+        with self.session() as session:
+            setting = session.get(Setting, key)
+            if setting is None:
+                return False
+            session.delete(setting)
+            return True

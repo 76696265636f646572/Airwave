@@ -17,6 +17,7 @@ from app.services.ffmpeg_pipeline import FfmpegPipeline
 from app.services.ffmpeg_setup import ensure_ffmpeg_path
 from app.services.playlist_service import PlaylistService
 from app.services.sonos_service import SonosService
+from app.services.cookie_resolver import create_cookie_resolver
 from app.services.stream_engine import StreamEngine
 from app.services.ui_events import UiEventBroker
 from app.services.yt_dlp_service import YtDlpService
@@ -56,7 +57,8 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     configure_logging()
 
     repository = Repository(settings.db_url)
-    yt_dlp_service = YtDlpService(settings.yt_dlp_path)
+    get_cookie_path = create_cookie_resolver(repository.get_setting)
+    yt_dlp_service = YtDlpService(settings.yt_dlp_path, get_cookie_path=get_cookie_path)
     ffmpeg_path = ensure_ffmpeg_path(settings.ffmpeg_path)
     ffmpeg_pipeline = FfmpegPipeline(ffmpeg_path, bitrate=settings.mp3_bitrate)
     ui_events = UiEventBroker()
