@@ -290,13 +290,7 @@ def play_now(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
     url = str(payload.url)
     try:
         if services["yt_dlp"].is_playlist_url(url):
-            imported = services["playlist"].import_playlist(url)
-            queued = services["playlist"].queue_playlist(imported["playlist_id"], replace=True)
-            result = {
-                **imported,
-                "count": queued["count"],
-                "item_ids": queued["item_ids"],
-            }
+            result = services["playlist"].queue_playlist_url(url, replace=True)
         else:
             result = services["playlist"].add_url(url)
             item_ids = result.get("item_ids") or []

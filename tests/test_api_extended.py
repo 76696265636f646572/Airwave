@@ -27,6 +27,10 @@ class FakePlaylistService:
     def add_url(self, url: str) -> dict:
         return {"type": "video", "count": 1, "title": f"added:{url}", "item_ids": [1]}
 
+    def queue_playlist_url(self, url: str, *, replace: bool = False) -> dict:
+        self.queue_replace_requested = replace
+        return {"type": "playlist", "count": 2, "title": f"queued:{url}", "item_ids": [11, 12]}
+
     def preview_playlist(self, url: str):
         return SimpleNamespace(
             source_url=url,
