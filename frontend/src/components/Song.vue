@@ -17,7 +17,7 @@
         class="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
         aria-hidden
       >
-        <UIcon name="i-lucide-play" class="size-8 text-white drop-shadow-md" />
+        <UIcon name="i-bi-play-fill" class="size-8 text-white drop-shadow-md" />
       </div>
     </div>
     
@@ -47,7 +47,7 @@
         <UButton
           class="cursor-pointer"
           type="button"
-          icon="i-lucide-more-horizontal"
+          icon="i-bi-three-dots"
           color="neutral"
           variant="ghost"
           size="xs"
@@ -179,7 +179,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Play now",
-        icon: "i-lucide-play",
+        icon: "i-bi-play-fill",
         onSelect: () => playNow(url),
       },
     );
@@ -188,7 +188,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Add to queue",
-        icon: "i-lucide-list-music",
+        icon: "i-bi-music-note-list",
         onSelect: () => addToQueue(url),
       },
     );
@@ -205,7 +205,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Add to playlist",
-        icon: "i-lucide-plus",
+        icon: "i-bi-plus",
         children: [addToPlaylistChildren],
       },
     );
@@ -217,7 +217,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Remove from playlist",
-        icon: "i-lucide-trash-2",
+        icon: "i-bi-trash-fill",
         onSelect: () => removeFromPlaylist(props.entryId),
       },
     );

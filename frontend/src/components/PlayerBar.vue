@@ -17,7 +17,7 @@
             class="h-full w-full object-cover"
           />
           <div v-else class="flex h-full w-full items-center justify-center bg-neutral-800 text-muted">
-            <UIcon name="i-lucide-music" class="size-6" />
+            <UIcon name="i-bi-music-note-beamed" class="size-6" />
           </div>
         </div>
         <div class="min-w-0 flex-1">
@@ -76,12 +76,12 @@
             type="button"
             :color="playbackState.shuffle_enabled ? 'primary' : 'neutral'"
             :variant="playbackState.shuffle_enabled ? 'soft' : 'ghost'"
-            icon="i-lucide-shuffle"
+            icon="i-bi-shuffle"
             aria-label="Toggle shuffle"
             class="cursor-pointer"
             @click="setShuffleEnabled(!playbackState.shuffle_enabled)"
           />
-          <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-skip-back" aria-label="Previous" @click="previousTrack" />
+          <UButton type="button" color="neutral" variant="ghost" icon="i-bi-skip-backward-fill" aria-label="Previous" @click="previousTrack" />
           <UButton
             type="button"
             color="neutral"
@@ -91,7 +91,7 @@
             class="rounded-full cursor-pointer"
             @click="togglePause"
           />
-          <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-skip-forward" aria-label="Next" @click="skipCurrent" />
+          <UButton type="button" color="neutral" variant="ghost" icon="i-bi-skip-forward-fill" aria-label="Next" @click="skipCurrent" />
           <UButton
             type="button"
             :color="playbackState.repeat_mode !== 'off' ? 'primary' : 'neutral'"
@@ -120,7 +120,7 @@
               type="button"
               :color="sidebarView === SIDEBAR_QUEUE_VIEW ? 'primary' : 'neutral'"
               :variant="sidebarView === SIDEBAR_QUEUE_VIEW ? 'soft' : 'ghost'"
-              icon="i-lucide-list-music"
+              icon="i-bi-music-note-list"
               aria-label="Show queue and history"
               class="cursor-pointer"
               @click="sidebarView = SIDEBAR_QUEUE_VIEW"
@@ -129,7 +129,7 @@
               type="button"
               :color="sidebarView === SIDEBAR_SONOS_VIEW ? 'primary' : 'neutral'"
               :variant="sidebarView === SIDEBAR_SONOS_VIEW ? 'soft' : 'ghost'"
-              icon="i-lucide-speaker"
+              icon="i-bi-speaker-fill"
               aria-label="Show Sonos speakers"
               class="cursor-pointer"
               @click="sidebarView = SIDEBAR_SONOS_VIEW"
@@ -219,9 +219,9 @@ const { playbackState } = usePlaybackState();
 const { sidebarView } = useUiState();
 const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
 const playPauseIcon = computed(() =>
-  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-lucide-pause" : "i-lucide-play"
+  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
-const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-lucide-repeat-1" : "i-lucide-repeat"));
+const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";
   if (playbackState.value.repeat_mode === "one") return "Repeat one";
@@ -229,9 +229,9 @@ const repeatLabel = computed(() => {
 });
 const localVolumePercent = computed(() => Math.round((localVolume.value || 0) * 100));
 const localVolumeIcon = computed(() => {
-  if (isMuted.value || localVolume.value <= 0) return "i-lucide-volume-x";
-  if (localVolume.value < 0.5) return "i-lucide-volume-1";
-  return "i-lucide-volume-2";
+  if (isMuted.value || localVolume.value <= 0) return "i-bi-volume-mute-fill";
+  if (localVolume.value < 0.5) return "i-bi-volume-down-fill";
+  return "i-bi-volume-up-fill";
 });
 
 function onStripClick() {

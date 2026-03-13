@@ -14,7 +14,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-house"
+          icon="i-bi-house-fill"
           class="self-start sm:self-auto"
           @click="router.push('/')"
         />
@@ -34,7 +34,7 @@
                 <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
               </template>
               <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
-                <UIcon name="i-lucide-chevron-down" class="size-4" />
+                <UIcon name="i-bi-chevron-down" class="size-4" />
               </UButton>
             </UDropdownMenu>
           </div>
@@ -56,7 +56,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-settings"
+          icon="i-bi-gear-fill"
           class="flex-shrink-0"
           @click="router.push('/settings')"
         />
@@ -73,7 +73,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-plus-circle"
+          icon="i-bi-plus-circle-fill"
           class="h-10"
           aria-label="Add URL"
           @click="addUrlSheetOpen = true"
@@ -104,7 +104,7 @@
                   </template>
                   <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
                     <span aria-hidden="true">|</span>
-                    <UIcon name="i-lucide-chevron-down" class="size-4" />
+                    <UIcon name="i-bi-chevron-down" class="size-4" />
                   </UButton>
                 </UDropdownMenu>
               </template>
@@ -245,24 +245,24 @@ const defaultActionId = computed(() => {
 
 const availableActions = computed(() => {
   let base = [
-    { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
-    { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
+    { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+    { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
   ];
   if (actionContext.value === "start-radio") {
     base = [
-      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
-      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
-      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-lucide-play" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-lucide-list-music" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-lucide-download" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-bi-download" },
     ];
   } else if (actionContext.value === "playlist-capable" || actionContext.value === "canonical-playlist") {
     base = [
-      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
-      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-lucide-list-music" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-lucide-download" },
-      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-bi-download" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
     ];
   }
   // filter default action from base
@@ -322,7 +322,7 @@ const actionDropdownItems = computed(() => {
     items.push(
       {
         label: "Import into playlist",
-        icon: "i-lucide-download",
+        icon: "i-bi-download",
         children: [playlistChildren],
       },
     );

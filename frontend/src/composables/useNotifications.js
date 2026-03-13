@@ -28,7 +28,7 @@ export function useNotifications() {
       title,
       description,
       color: "success",
-      icon: "i-lucide-check",
+      icon: "i-bi-check-lg",
       type: "foreground",
     });
   }
@@ -38,7 +38,7 @@ export function useNotifications() {
       title,
       description: formatErrorMessage(error),
       color: "error",
-      icon: "i-lucide-triangle-alert",
+      icon: "i-bi-exclamation-triangle-fill",
       type: "foreground",
     });
   }

@@ -11,7 +11,7 @@
       aria-label="Home"
       @click="goHome"
     >
-      <UIcon name="i-lucide-house" class="size-5" />
+      <UIcon name="i-bi-house-fill" class="size-5" />
       <span class="text-xs">Home</span>
     </UButton>
     <UButton
@@ -22,7 +22,7 @@
       aria-label="Search"
       @click="goSearch"
     >
-      <UIcon name="i-lucide-search" class="size-5" />
+      <UIcon name="i-bi-search" class="size-5" />
       <span class="text-xs">Search</span>
     </UButton>
     <UButton
@@ -33,7 +33,7 @@
       aria-label="Playlists"
       @click="mobileView = MOBILE_VIEW_PLAYLISTS"
     >
-      <UIcon name="i-lucide-list" class="size-5" />
+      <UIcon name="i-bi-list" class="size-5" />
       <span class="text-xs">Playlists</span>
     </UButton>
     <UButton
@@ -44,7 +44,7 @@
       aria-label="Queue and history"
       @click="mobileView = MOBILE_VIEW_QUEUE"
     >
-      <UIcon name="i-lucide-list-music" class="size-5" />
+      <UIcon name="i-bi-list-music" class="size-5" />
       <span class="text-xs">Queue</span>
     </UButton>
     <UButton
@@ -55,7 +55,7 @@
       aria-label="Sonos speakers"
       @click="mobileView = MOBILE_VIEW_SONOS"
     >
-      <UIcon name="i-lucide-speaker" class="size-5" />
+      <UIcon name="i-bi-speaker-fill" class="size-5" />
       <span class="text-xs">Sonos</span>
     </UButton>
     <UButton
@@ -66,7 +66,7 @@
       aria-label="Settings"
       @click="goSettings"
     >
-      <UIcon name="i-lucide-settings" class="size-5" />
+      <UIcon name="i-bi-gear-fill" class="size-5" />
       <span class="text-xs">Settings</span>
     </UButton>
   </nav>

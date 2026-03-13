@@ -44,7 +44,7 @@
           <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
             <UButton
               type="button"
-              icon="i-lucide-more-horizontal"
+              icon="i-bi-three-dots"
               color="neutral"
               variant="ghost"
               size="xs"
@@ -146,20 +146,20 @@ watch(playlistToRename, (p) => {
 function dropdownItemsFor(playlist) {
   const items = [
     [
-      { label: "Queue", icon: "i-lucide-list-music", class: "cursor-pointer", onSelect: () => queuePlaylist(playlist.id) },
-      { label: "Play now", icon: "i-lucide-play", class: "cursor-pointer", onSelect: () => playPlaylistNow(playlist.id) },
+      { label: "Queue", icon: "i-bi-music-note-list", class: "cursor-pointer", onSelect: () => queuePlaylist(playlist.id) },
+      { label: "Play now", icon: "i-bi-play-fill", class: "cursor-pointer", onSelect: () => playPlaylistNow(playlist.id) },
     ],
   ];
   let children = [];
   children.push(
-    { label: "Rename", icon: "i-lucide-pencil", class: "cursor-pointer", onSelect: () => openRenameModal(playlist) },
+    { label: "Rename", icon: "i-bi-pencil-fill", class: "cursor-pointer", onSelect: () => openRenameModal(playlist) },
   );
   
   const pinned = !!playlist.pinned;
   children.push(
     {
       label: pinned ? "Unpin" : "Pin",
-      icon: pinned ? "i-lucide-pin-off" : "i-lucide-pin",
+      icon: pinned ? "i-bi-pin" : "i-bi-pin-fill",
       class: "cursor-pointer",
       onSelect: () => setPlaylistPinned(playlist.id, !pinned),
     },  
@@ -167,7 +167,7 @@ function dropdownItemsFor(playlist) {
   children.push(
     {
       label: "Delete",
-      icon: "i-lucide-trash-2",
+      icon: "i-bi-trash-fill",
       class: "cursor-pointer",
       onSelect: () => openDeleteModal(playlist),
       color: "error",

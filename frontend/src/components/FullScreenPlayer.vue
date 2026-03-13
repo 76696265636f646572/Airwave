@@ -12,7 +12,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-chevron-down"
+          icon="i-bi-chevron-down"
           size="lg"
           class="shrink-0"
           aria-label="Close"
@@ -30,7 +30,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-more-vertical"
+          icon="i-bi-three-dots-vertical"
           size="lg"
           class="shrink-0"
           aria-label="More options"
@@ -64,7 +64,7 @@
                 v-else
                 class="flex h-full w-full items-center justify-center bg-neutral-800 text-4xl text-muted"
               >
-                <UIcon name="i-lucide-music" />
+                <UIcon name="i-bi-music-note-beamed" />
               </div>
             </div>
             <div class="min-w-0 flex-1 pt-1">
@@ -80,7 +80,7 @@
               type="button"
               color="neutral"
               variant="ghost"
-              icon="i-lucide-plus"
+              icon="i-bi-plus"
               size="lg"
               class="shrink-0 rounded-full border border-white/20"
               aria-label="Add to playlist"
@@ -107,7 +107,7 @@
             type="button"
             :color="playbackState.shuffle_enabled ? 'primary' : 'neutral'"
             :variant="playbackState.shuffle_enabled ? 'soft' : 'ghost'"
-            icon="i-lucide-shuffle"
+            icon="i-bi-shuffle"
             size="lg"
             aria-label="Shuffle"
             @click="setShuffleEnabled(!playbackState.shuffle_enabled)"
@@ -116,7 +116,7 @@
             type="button"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-skip-back"
+            icon="i-bi-skip-backward-fill"
             size="xl"
             aria-label="Previous"
             @click="previousTrack"
@@ -138,7 +138,7 @@
             type="button"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-skip-forward"
+            icon="i-bi-skip-forward-fill"
             size="xl"
             aria-label="Next"
             @click="skipCurrent"
@@ -242,9 +242,9 @@ const bgStyle = computed(() => {
 });
 
 const playPauseIcon = computed(() =>
-  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-lucide-pause" : "i-lucide-play"
+  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
-const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-lucide-repeat-1" : "i-lucide-repeat"));
+const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";
   if (playbackState.value.repeat_mode === "one") return "Repeat one";
@@ -252,9 +252,9 @@ const repeatLabel = computed(() => {
 });
 const localVolumePercent = computed(() => Math.round((localVolume.value || 0) * 100));
 const localVolumeIcon = computed(() => {
-  if (isMuted.value || localVolume.value <= 0) return "i-lucide-volume-x";
-  if (localVolume.value < 0.5) return "i-lucide-volume-1";
-  return "i-lucide-volume-2";
+  if (isMuted.value || localVolume.value <= 0) return "i-bi-volume-mute-fill";
+  if (localVolume.value < 0.5) return "i-bi-volume-down-fill";
+  return "i-bi-volume-up-fill";
 });
 
 function close() {

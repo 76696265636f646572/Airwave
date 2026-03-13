@@ -28,7 +28,7 @@
           color="primary"
           variant="soft"
           size="sm"
-          icon="i-lucide-search"
+          icon="i-bi-search"
           @click="goToSearch"
         >
           Search
@@ -37,10 +37,10 @@
 
       <!-- Quick CTAs when nothing playing -->
       <div v-else class="mt-4 flex flex-wrap gap-2">
-        <UButton type="button" color="primary" variant="solid" size="md" icon="i-lucide-search" @click="goToSearch">
+        <UButton type="button" color="primary" variant="solid" size="md" icon="i-bi-search" @click="goToSearch">
           Search YouTube
         </UButton>
-        <UButton type="button" color="neutral" variant="outline" size="md" icon="i-lucide-list-music" @click="goToPlaylists">
+        <UButton type="button" color="neutral" variant="outline" size="md" icon="i-bi-music-note-list" @click="goToPlaylists">
           Browse playlists
         </UButton>
       </div>
@@ -76,7 +76,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToPlaylists"
           >
             View all
@@ -97,7 +97,7 @@
               class="h-10 w-10 shrink-0 rounded object-cover"
             />
             <div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-neutral-700/50">
-              <UIcon name="i-lucide-music" class="size-5 text-muted" />
+              <UIcon name="i-bi-music-note-beamed" class="size-5 text-muted" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{{ playlist.title }}</p>
@@ -119,7 +119,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToQueue"
           >
             View queue
@@ -144,7 +144,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToHistory"
           >
             View history

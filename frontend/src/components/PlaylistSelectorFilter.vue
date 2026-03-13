@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center gap-2 px-2 py-1.5">
-    <UIcon name="i-lucide-search" class="size-4 shrink-0 text-muted" />
+    <UIcon name="i-bi-search" class="size-4 shrink-0 text-muted" />
     <input
       :model-value="modelValue"
       type="text"
