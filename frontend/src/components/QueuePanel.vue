@@ -7,7 +7,7 @@
         color="error"
         variant="soft"
         size="xs"
-        :disabled="!filteredQueue.length"
+        :disabled="!queue.length"
         class="shrink-0"
         @click="clearQueue"
       >
@@ -16,14 +16,6 @@
     </div>
     <div class="mt-3 min-h-0 flex-1 pr-1">
       <UScrollArea :ui="{ viewport: 'gap-2 pr-1' }" class="h-full min-h-0">
-        <!-- When filtered: plain list, no drag -->
-        <ul v-if="isFiltered" class="space-y-2">
-          <li v-for="item in filteredQueue" :key="item.id">
-            <Song :item="item" mode="queue" :playlists="playlists" />
-          </li>
-        </ul>
-        <!-- When not filtered: playing items fixed, queued items draggable -->
-        <template v-else>
           <ul class="space-y-2">
             <li v-for="item in playingItems" :key="item.id">
               <Song :item="item" mode="queue" :playlists="playlists" />
@@ -44,7 +36,6 @@
               <Song :item="item" mode="queue" :playlists="playlists" />
             </li>
           </VueDraggable>
-        </template>
       </UScrollArea>
     </div>
   </section>
@@ -56,11 +47,10 @@ import { computed, ref, watch } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
 
 import { useLibraryState } from "../composables/useLibraryState";
-import { useQueueHistoryFilters } from "../composables/useUiState";
+
 import Song from "./Song.vue";
 
-const { queue, history, playlists, clearQueue, reorderQueueItem } = useLibraryState();
-const { filteredQueue, isFiltered } = useQueueHistoryFilters(queue, history);
+const { queue, playlists, clearQueue, reorderQueueItem } = useLibraryState();
 
 const playingItems = computed(() => queue.value.filter((item) => item.status === "playing"));
 
