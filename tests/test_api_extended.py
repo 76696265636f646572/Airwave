@@ -40,7 +40,8 @@ class FakePlaylistService:
             entries=[{"id": "1"}, {"id": "2"}],
         )
 
-    def import_playlist(self, url: str) -> dict:
+    def import_playlist(self, url: str, *, target_playlist_id: uuid.UUID | None = None) -> dict:
+        _ = target_playlist_id
         return {"type": "playlist", "count": 2, "title": f"imported:{url}", "playlist_id": TEST_PLAYLIST_UUID, "item_ids": [2, 3]}
 
     def list_playlists(self):
