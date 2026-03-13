@@ -31,6 +31,7 @@ class GracefulStreamingResponse(StreamingResponse):
 
 class AddUrlRequest(BaseModel):
     url: HttpUrl
+    target_playlist_id: UUID | None = None
 
 
 class ReorderRequest(BaseModel):
@@ -414,7 +415,7 @@ def playlist_preview(payload: AddUrlRequest, request: Request) -> dict[str, Any]
 
 @api_router.post("/playlist/import")
 def playlist_import(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
-    result = _services(request)["playlist"].import_playlist(str(payload.url))
+    result = _services(request)["playlist"].import_playlist(str(payload.url), target_playlist_id=payload.target_playlist_id)
     _publish_ui_snapshot(request)
     return {"ok": True, **result}
 

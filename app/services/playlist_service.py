@@ -64,15 +64,20 @@ class PlaylistService:
             "item_ids": [item.id for item in created],
         }
 
-    def import_playlist(self, url: str) -> dict:
+    def import_playlist(self, url: str, target_playlist_id: uuid.UUID | None = None) -> dict:
         preview = self.yt_dlp_service.preview_playlist(url)
-        playlist = self.repository.create_or_update_playlist(
-            source_url=preview.source_url,
-            title=preview.title,
-            channel=preview.channel,
-            entry_count=len(preview.entries),
-            thumbnail_url=preview.thumbnail_url,
-        )
+        if not target_playlist_id:
+            playlist = self.repository.create_or_update_playlist(
+                source_url=preview.source_url,
+                title=preview.title,
+                channel=preview.channel,
+                entry_count=len(preview.entries),
+                thumbnail_url=preview.thumbnail_url,
+            )
+        else:
+            playlist = self.repository.get_playlist(target_playlist_id)
+            if playlist is None:
+                raise ValueError("Playlist not found")
         entries = [
             NewPlaylistEntry(
                 source_url=entry["source_url"],
@@ -84,7 +89,12 @@ class PlaylistService:
             )
             for entry in preview.entries
         ]
-        self.repository.replace_playlist_entries(playlist.id, entries)
+        if not target_playlist_id:
+            self.repository.replace_playlist_entries(playlist.id, entries)
+        else:
+            self.repository.add_playlist_entries(playlist.id, entries)
+            
+        entries = self.repository.list_playlist_entries(playlist.id)
         return {
             "type": "playlist",
             "count": len(entries),
