@@ -26,7 +26,7 @@
         />
         <template v-if="isUrlInput">
           <div class="flex w-full sm:w-auto">
-            <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 rounded-r-none sm:flex-none">
+            <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 h-10 rounded-r-none sm:flex-none">
               {{ primaryActionLabel }}
             </UButton>
             <UDropdownMenu :items="actionDropdownItems">
@@ -42,7 +42,7 @@
           color="primary"
           variant="solid"
           size="md"
-          class="self-start sm:self-auto"
+          class="self-start sm:self-auto h-10"
           @click="onUnifiedSubmit(false)"
         >
           Search
@@ -306,10 +306,6 @@ function runAction(actionId, closeAfter = false, urlOverride = null) {
 
 function runPrimaryAction(closeAfter = false) {
   runAction(defaultActionId.value, closeAfter, unifiedInput.value.trim());
-}
-
-function runPrimaryActionThenClose() {
-  runPrimaryAction(true);
 }
 
 function onUnifiedSubmit(closeAfter = false) {
