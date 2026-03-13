@@ -1,65 +1,67 @@
 <template>
   <header class="rounded-xl border border-neutral-700 p-3 surface-panel">
-    <!-- Desktop / tablet: full layout (single branch to avoid duplicate content in DOM) -->
+    <!-- Desktop / tablet: single row, Home + search bar centered, Settings on right -->
     <template v-if="!isMobile">
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <h1 class="text-2xl font-bold leading-tight">AirWave</h1>
-      <div class="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+    <div class="flex items-center w-full gap-3">
+      <div class="flex flex-1 items-center min-w-0">
+        <h1 class="text-2xl font-bold leading-tight">AirWave</h1>
+      </div>
+      <form
+        class="flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-center shrink-0"
+        @submit.prevent="onUnifiedSubmit(false)"
+      >
         <UButton
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-house"
+          icon="i-bi-house-fill"
           class="self-start sm:self-auto"
           @click="router.push('/')"
         />
+        <input
+          v-model="unifiedInput"
+          type="text"
+          placeholder="Search or paste YouTube URL..."
+          class="h-10 w-full min-w-0 flex-1 rounded-md border px-3 text-sm sm:min-w-[400px] sm:max-w-[800px] surface-input"
+        />
+        <template v-if="isUrlInput">
+          <div class="flex w-full sm:w-auto">
+            <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 h-10 rounded-r-none sm:flex-none">
+              {{ primaryActionLabel }}
+            </UButton>
+            <UDropdownMenu :items="actionDropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && playlistSelector.resetSearch()">
+              <template #playlist-filter>
+                <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+              </template>
+              <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
+                <UIcon name="i-bi-chevron-down" class="size-4" />
+              </UButton>
+            </UDropdownMenu>
+          </div>
+        </template>
+        <UButton
+          v-else
+          type="submit"
+          color="primary"
+          variant="solid"
+          size="md"
+          class="self-start sm:self-auto h-10"
+          @click="onUnifiedSubmit(false)"
+        >
+          Search
+        </UButton>
+      </form>
+      <div class="flex flex-1 justify-end min-w-0">
         <UButton
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-settings"
-          class="self-start sm:self-auto"
+          icon="i-bi-gear-fill"
+          class="flex-shrink-0"
           @click="router.push('/settings')"
         />
-        <input
-          :value="searchText"
-          type="search"
-          placeholder="Search local + YouTube"
-          class="h-10 w-full min-w-0 rounded-md border px-3 text-sm sm:w-[320px] surface-input"
-          @input="onSearchTextChange($event.target.value)"
-          @keydown.enter.prevent="onYoutubeSearch(router, route, searchText)"
-        />
-        <UButton
-          type="button"
-          color="primary"
-          variant="solid"
-          size="md"
-          class="self-start sm:self-auto"
-          @click="onYoutubeSearch(router, route, searchText)"
-        >
-          Search
-        </UButton>
       </div>
     </div>
-    <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" @submit.prevent="runPrimaryAction">
-      <input
-        v-model="urlInput"
-        type="url"
-        placeholder="https://www.youtube.com/watch?v=... or https://www.youtube.com/playlist?list=..."
-        required
-        class="h-10 w-full min-w-0 flex-1 rounded-md border px-3 text-sm surface-input"
-      />
-      <div class="flex w-full sm:w-auto">
-        <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 rounded-r-none sm:flex-none">
-          {{ primaryActionLabel }}
-        </UButton>
-        <UDropdownMenu :items="actionDropdownItems">
-          <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
-            <UIcon name="i-lucide-chevron-down" class="size-4" />
-          </UButton>
-        </UDropdownMenu>
-      </div>
-    </form>
     </template>
 
     <!-- Mobile: compact row -->
@@ -71,7 +73,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-plus-circle"
+          icon="i-bi-plus-circle-fill"
           class="h-10"
           aria-label="Add URL"
           @click="addUrlSheetOpen = true"
@@ -79,29 +81,42 @@
       </div>
     </div>
 
-    <!-- Mobile: Add URL sheet (modal only on mobile) -->
+    <!-- Mobile: Search or Add URL sheet (merged input with contextual buttons) -->
     <UModal v-model:open="addUrlSheetOpen" :ui="{ width: 'w-full max-w-sm', content: 'rounded-t-2xl surface-panel' }">
       <template #content>
         <div class="p-4">
-          <h2 class="text-lg font-semibold">Add URL</h2>
-          <form class="mt-3 flex flex-col gap-3" @submit.prevent="runPrimaryActionThenClose">
+          <h2 class="text-lg font-semibold">Search or Add URL</h2>
+          <form class="mt-3 flex flex-col gap-3" @submit.prevent="onUnifiedSubmit(true)">
             <input
-              v-model="urlInput"
-              type="url"
-              placeholder="https://www.youtube.com/watch?v=..."
-              required
+              v-model="unifiedInput"
+              type="text"
+              placeholder="Search or paste YouTube URL..."
               class="h-11 w-full rounded-md border px-3 text-sm surface-input"
             />
             <div class="flex w-full">
-              <UButton type="submit" color="primary" variant="solid" class="flex-1 rounded-r-none">
-                {{ primaryActionLabel }}
-              </UButton>
-              <UDropdownMenu :items="actionDropdownItems">
-                <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
-                  <span aria-hidden="true">|</span>
-                  <UIcon name="i-lucide-chevron-down" class="size-4" />
+              <template v-if="isUrlInput">
+                <UButton type="submit" color="primary" variant="solid" class="flex-1 rounded-r-none">
+                  {{ primaryActionLabel }}
                 </UButton>
-              </UDropdownMenu>
+                <UDropdownMenu :items="actionDropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && playlistSelector.resetSearch()">
+                  <template #playlist-filter>
+                    <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                  </template>
+                  <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
+                    <span aria-hidden="true">|</span>
+                    <UIcon name="i-bi-chevron-down" class="size-4" />
+                  </UButton>
+                </UDropdownMenu>
+              </template>
+              <UButton
+                v-else
+                type="submit"
+                color="primary"
+                variant="solid"
+                class="flex-1"
+              >
+                Search
+              </UButton>
             </div>
           </form>
         </div>
@@ -112,19 +127,22 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
+import { usePlaylistSelector } from "../composables/usePlaylistSelector";
 import { useUiState } from "../composables/useUiState";
 
 const { isMobile } = useBreakpoint();
-const urlInput = ref("");
+const unifiedInput = ref("");
 const addUrlSheetOpen = ref(false);
 const router = useRouter();
 const route = useRoute();
-const { queue, addUrl, playUrl, importPlaylistUrl } = useLibraryState();
+const { queue, playlists, addUrl, playUrl, importPlaylistUrl, importPlaylistIntoPlaylist, addUrlToPlaylist } = useLibraryState();
+const playlistSelector = usePlaylistSelector(playlists);
 const { searchText, onSearchTextChange, onYoutubeSearch } = useUiState();
 
 const ACTION_IDS = {
@@ -200,8 +218,12 @@ function getCanonicalPlaylistUrl(rawUrl) {
   return `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
 }
 
+const isUrlInput = computed(
+  () => unifiedInput.value.trim().toLowerCase().startsWith("http"),
+);
+
 const actionContext = computed(() => {
-  const rawUrl = urlInput.value.trim();
+  const rawUrl = unifiedInput.value.trim();
   if (!rawUrl) return "single";
   if (isCanonicalPlaylistPath(rawUrl)) return "canonical-playlist";
   if (hasPlaylistId(rawUrl) && isStartRadioUrl(rawUrl)) return "start-radio";
@@ -223,24 +245,24 @@ const defaultActionId = computed(() => {
 
 const availableActions = computed(() => {
   let base = [
-    { id: ACTION_IDS.PLAY_URL, label: "Play" },
-    { id: ACTION_IDS.ADD_URL, label: "Queue" },
+    { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+    { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
   ];
   if (actionContext.value === "start-radio") {
     base = [
-      { id: ACTION_IDS.ADD_URL, label: "Queue" },
-      { id: ACTION_IDS.PLAY_URL, label: "Play" },
-      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-bi-download" },
     ];
   } else if (actionContext.value === "playlist-capable" || actionContext.value === "canonical-playlist") {
     base = [
-      { id: ACTION_IDS.PLAY_URL, label: "Play" },
-      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist" },
-      { id: ACTION_IDS.ADD_URL, label: "Queue" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-bi-play-fill" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-bi-music-note-list" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-bi-download" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-bi-music-note-list" },
     ];
   }
   // filter default action from base
@@ -255,23 +277,64 @@ const primaryActionLabel = computed(() => {
   return "Play";
 });
 
-const actionDropdownItems = computed(() => [
-  ...availableActions.value.map((action) => ({
+const isPlaylistOrRadioContext = computed(
+  () =>
+    actionContext.value === "start-radio"
+    || actionContext.value === "playlist-capable"
+    || actionContext.value === "canonical-playlist",
+);
+
+const actionDropdownItems = computed(() => {
+  const items = availableActions.value.map((action) => ({
     label: action.label,
-    onSelect: () => runAction(action.id, addUrlSheetOpen.value),
-  })),
-]);
+    icon: action.icon,
+    onSelect: () => {
+      const url = unifiedInput.value.trim();
+      if (url) runAction(action.id, addUrlSheetOpen.value, url);
+    },
+  }));
 
-function consumeInputUrl() {
-  const url = urlInput.value.trim();
-  if (!url) return null;
-  urlInput.value = "";
-  return url;
-}
+  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value) && playlists.value.length > 0) {
+    const rawUrl = unifiedInput.value.trim();
+    const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
+    const playlistChildren = [
+      { type: "label", slot: "playlist-filter" },
+      ...playlistSelector.filteredPlaylists.value.map((p) => ({
+        label: p.title,
+        onSelect: () => {
+          importPlaylistIntoPlaylist(urlForPlaylist, p.id);
+          unifiedInput.value = "";
+          addUrlSheetOpen.value = false;
+        },
+      })),
+    ];
+    const addToPlaylistChildren = [
+      { type: "label", slot: "playlist-filter" },
+      ...playlistSelector.filteredPlaylists.value.map((p) => ({
+        label: p.title,
+        onSelect: () => {
+          addUrlToPlaylist(p.id, urlForPlaylist);
+          unifiedInput.value = "";
+          addUrlSheetOpen.value = false;
+        },
+      })),
+    ];
+    items.push(
+      {
+        label: "Import into playlist",
+        icon: "i-bi-download",
+        children: [playlistChildren],
+      },
+    );
+  }
 
-function runAction(actionId, closeAfter = false) {
-  const rawUrl = consumeInputUrl();
+  return items;
+});
+
+function runAction(actionId, closeAfter = false, urlOverride = null) {
+  const rawUrl = urlOverride ?? unifiedInput.value.trim();
   if (!rawUrl) return;
+  unifiedInput.value = "";
 
   const isStartRadio = isStartRadioUrl(rawUrl);
   const urlForSingle = isStartRadio ? getVideoOnlyUrl(rawUrl) : rawUrl;
@@ -294,11 +357,28 @@ function runAction(actionId, closeAfter = false) {
   }
 }
 
-function runPrimaryAction() {
-  runAction(defaultActionId.value, false);
+function runPrimaryAction(closeAfter = false) {
+  runAction(defaultActionId.value, closeAfter, unifiedInput.value.trim());
 }
 
-function runPrimaryActionThenClose() {
-  runAction(defaultActionId.value, true);
+function onUnifiedSubmit(closeAfter = false) {
+  const raw = unifiedInput.value.trim();
+  if (!raw) return;
+  if (isUrlInput.value) {
+    runPrimaryAction(closeAfter);
+  } else {
+    onYoutubeSearch(router, route, raw);
+    if (closeAfter) addUrlSheetOpen.value = false;
+  }
 }
+
+watch(
+  unifiedInput,
+  (val) => {
+    if (!val.trim().toLowerCase().startsWith("http")) {
+      onSearchTextChange(val);
+    }
+  },
+  { immediate: false },
+);
 </script>

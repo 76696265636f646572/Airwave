@@ -9,8 +9,8 @@ export const QUEUE_TAB = "queue";
 export const HISTORY_TAB = "history";
 
 export const queueSidebarTabs = [
-  { label: "Queue", icon: "i-lucide-list-music", slot: "queue", value: QUEUE_TAB },
-  { label: "History", icon: "i-lucide-history", slot: "history", value: HISTORY_TAB },
+  { label: "Queue", icon: "i-bi-music-note-list", slot: "queue", value: QUEUE_TAB },
+  { label: "History", icon: "i-bi-clock-history", slot: "history", value: HISTORY_TAB },
 ];
 
 const sidebarView = ref(SIDEBAR_QUEUE_VIEW);
@@ -141,28 +141,3 @@ export function useUiState() {
     selectPlaylist,
   };
 }
-
-export function useQueueHistoryFilters(queue, history) {
-  const isFiltered = computed(() => !!searchText.value.trim());
-
-  const filteredQueue = computed(() => {
-    if (!searchText.value.trim()) return queue.value;
-    const needle = searchText.value.toLowerCase();
-    return queue.value.filter((item) => {
-      const haystack = `${item.title || ""} ${item.source_url || ""} ${item.channel || ""}`.toLowerCase();
-      return haystack.includes(needle);
-    });
-  });
-
-  const filteredHistory = computed(() => {
-    if (!searchText.value.trim()) return history.value;
-    const needle = searchText.value.toLowerCase();
-    return history.value.filter((item) => {
-      const haystack = `${item.title || ""} ${item.source_url || ""} ${item.status || ""}`.toLowerCase();
-      return haystack.includes(needle);
-    });
-  });
-
-  return { filteredQueue, filteredHistory, isFiltered };
-}
-

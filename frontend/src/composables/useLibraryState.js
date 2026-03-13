@@ -91,6 +91,33 @@ export function useLibraryState() {
     }
   }
 
+  async function importPlaylistIntoPlaylist(url, targetPlaylistId) {
+    if (!targetPlaylistId) return;
+    try {
+      const result = await fetchJson("/api/playlist/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, target_playlist_id: targetPlaylistId }),
+      });
+      notifySuccess("Playlist imported", `${result.count || 0} items added to playlist.`);
+    } catch (error) {
+      notifyError("Could not import playlist", error);
+    }
+  }
+
+  async function addUrlToPlaylist(playlistId, url) {
+    try {
+      await fetchJson(`/api/playlists/${playlistId}/entries`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      notifySuccess("Saved to playlist", "Item added to playlist.");
+    } catch (error) {
+      notifyError("Could not save to playlist", error);
+    }
+  }
+
   async function createPlaylist(title) {
     try {
       const created = await fetchJson("/api/playlists/custom", {
@@ -280,6 +307,8 @@ export function useLibraryState() {
     addUrl,
     playUrl,
     importPlaylistUrl,
+    importPlaylistIntoPlaylist,
+    addUrlToPlaylist,
     createPlaylist,
     queuePlaylist,
     playPlaylistNow,

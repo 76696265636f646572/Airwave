@@ -17,7 +17,7 @@
             class="h-full w-full object-cover"
           />
           <div v-else class="flex h-full w-full items-center justify-center bg-neutral-800 text-muted">
-            <UIcon name="i-lucide-music" class="size-6" />
+            <UIcon name="i-bi-music-note-beamed" class="size-6" />
           </div>
         </div>
         <div class="min-w-0 flex-1">
@@ -32,8 +32,8 @@
       </div>
       <UButton
         type="button"
-        color="primary"
-        variant="solid"
+        color="neutral"
+        variant="ghost"
         class="player-bar-mobile-play shrink-0 min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center p-0"
         aria-label="Play / Pause"
         @click.stop="togglePause"
@@ -64,64 +64,52 @@
           </p>
           <p class="truncate text-xs text-muted">
             {{ (playbackState.now_playing_channel || playbackState.mode || "idle").toUpperCase() }}
-            <span v-if="playbackState.elapsed_seconds != null"> · {{ formatDuration(playbackState.elapsed_seconds) }}</span>
-            <span v-if="playbackState.duration_seconds"> / {{ formatDuration(playbackState.duration_seconds) }}</span>
           </p>
         </div>
       </div>
 
       <div class="min-w-0 flex flex-col items-center">
-        <div class="mb-2 flex w-full items-center justify-center gap-2">
+        <div class="mb-3 flex w-full items-center justify-center gap-2">
           <UButton
             type="button"
             :color="playbackState.shuffle_enabled ? 'primary' : 'neutral'"
             :variant="playbackState.shuffle_enabled ? 'soft' : 'ghost'"
-            icon="i-lucide-shuffle"
+            icon="i-bi-shuffle"
             aria-label="Toggle shuffle"
+            class="cursor-pointer"
             @click="setShuffleEnabled(!playbackState.shuffle_enabled)"
           />
-          <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-skip-back" aria-label="Previous" @click="previousTrack" />
+          <UButton type="button" color="neutral" variant="ghost" icon="i-bi-skip-backward-fill" aria-label="Previous" @click="previousTrack" />
           <UButton
             type="button"
-            color="primary"
+            color="neutral"
             variant="solid"
             :icon="playPauseIcon"
             aria-label="Toggle play pause"
+            class="rounded-full cursor-pointer"
             @click="togglePause"
           />
-          <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-skip-forward" aria-label="Next" @click="skipCurrent" />
+          <UButton type="button" color="neutral" variant="ghost" icon="i-bi-skip-forward-fill" aria-label="Next" @click="skipCurrent" />
           <UButton
             type="button"
             :color="playbackState.repeat_mode !== 'off' ? 'primary' : 'neutral'"
             :variant="playbackState.repeat_mode !== 'off' ? 'soft' : 'ghost'"
             :icon="repeatIcon"
             :aria-label="repeatLabel"
+            class="cursor-pointer"
             @click="cycleRepeatMode"
           />
         </div>
 
-        <div
-          ref="progressTrackEl"
-          class="group w-full cursor-pointer"
-          :class="{ 'pointer-events-none opacity-60': !playbackState.can_seek }"
-          role="button"
-          tabindex="0"
-          :aria-disabled="!playbackState.can_seek"
-          aria-label="Seek current track"
-          @click="onProgressClick"
-        >
-          <UProgress
-            :model-value="playbackState.progress_percent || 0"
-            :max="100"
-            color="primary"
-            size="md"
-            class="w-full"
-          />
-        </div>
-        <div class="mt-1 flex w-full items-center justify-between text-xs text-muted">
-          <span>{{ formatDuration(playbackState.elapsed_seconds) }}</span>
-          <span>{{ formatDuration(playbackState.duration_seconds) }}</span>
-        </div>
+        <SongProgress
+          :progress-percent="playbackState.progress_percent ?? 0"
+          :elapsed-seconds="playbackState.elapsed_seconds"
+          :duration-seconds="playbackState.duration_seconds"
+          :can-seek="playbackState.can_seek"
+          size="md"
+          class="cursor-pointer"
+          @seek="seekToPercent"
+        />
       </div>
 
       <div class="flex flex-wrap items-center gap-2 md:justify-end md:pl-4">
@@ -130,16 +118,18 @@
               type="button"
               :color="sidebarView === SIDEBAR_QUEUE_VIEW ? 'primary' : 'neutral'"
               :variant="sidebarView === SIDEBAR_QUEUE_VIEW ? 'soft' : 'ghost'"
-              icon="i-lucide-list-music"
+              icon="i-bi-music-note-list"
               aria-label="Show queue and history"
+              class="cursor-pointer"
               @click="sidebarView = SIDEBAR_QUEUE_VIEW"
             />
             <UButton
               type="button"
               :color="sidebarView === SIDEBAR_SONOS_VIEW ? 'primary' : 'neutral'"
               :variant="sidebarView === SIDEBAR_SONOS_VIEW ? 'soft' : 'ghost'"
-              icon="i-lucide-speaker"
+              icon="i-bi-speaker-fill"
               aria-label="Show Sonos speakers"
+              class="cursor-pointer"
               @click="sidebarView = SIDEBAR_SONOS_VIEW"
             />
           </div>
@@ -157,6 +147,7 @@
           variant="soft"
           size="xs"
           :disabled="!playbackState.stream_url || isLocalPlaybackActive"
+          class="cursor-pointer"
           @click="startLocalPlayback"
         >
           Play Local
@@ -167,6 +158,7 @@
           variant="outline"
           size="xs"
           :disabled="!isLocalPlaybackActive"
+          class="cursor-pointer"
           @click="stopLocalPlayback"
         >
           Stop Local
@@ -179,6 +171,7 @@
             :icon="localVolumeIcon"
             aria-label="Toggle local audio mute"
             :disabled="!playbackState.stream_url"
+            class="cursor-pointer"
             @click="toggleMuted"
           />
           <USlider
@@ -188,7 +181,9 @@
             color="neutral"
             size="sm"
             :disabled="!playbackState.stream_url"
+            :ui="{ root: 'group', range: 'transition-colors group-hover:bg-primary', thumb: 'opacity-0 cursor-pointer transition-opacity group-hover:opacity-100' }"
             aria-label="Local audio volume"
+            class="cursor-pointer"
             @update:model-value="onLocalVolumeChange"
           />
         </div>
@@ -199,7 +194,8 @@
 </template>
 
 <script setup>
-import { computed, inject, ref } from "vue";
+import { computed, inject } from "vue";
+import { debounce } from "../composables/useDebounce";
 import { formatDuration } from "../composables/useDuration";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
@@ -216,15 +212,14 @@ const {
   toggleMuted,
 } = inject("localPlayback");
 
-const progressTrackEl = ref(null);
 const { isMobile } = useBreakpoint();
 const { playbackState } = usePlaybackState();
 const { sidebarView } = useUiState();
 const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
 const playPauseIcon = computed(() =>
-  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-lucide-pause" : "i-lucide-play"
+  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
-const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-lucide-repeat-1" : "i-lucide-repeat"));
+const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";
   if (playbackState.value.repeat_mode === "one") return "Repeat one";
@@ -232,9 +227,9 @@ const repeatLabel = computed(() => {
 });
 const localVolumePercent = computed(() => Math.round((localVolume.value || 0) * 100));
 const localVolumeIcon = computed(() => {
-  if (isMuted.value || localVolume.value <= 0) return "i-lucide-volume-x";
-  if (localVolume.value < 0.5) return "i-lucide-volume-1";
-  return "i-lucide-volume-2";
+  if (isMuted.value || localVolume.value <= 0) return "i-bi-volume-mute-fill";
+  if (localVolume.value < 0.5) return "i-bi-volume-down-fill";
+  return "i-bi-volume-up-fill";
 });
 
 function onStripClick() {
@@ -248,19 +243,11 @@ function cycleRepeatMode() {
   setRepeatMode(nextMode);
 }
 
-function onProgressClick(event) {
-  if (!progressTrackEl.value || !playbackState.value.can_seek) return;
-  const bounds = progressTrackEl.value.getBoundingClientRect();
-  if (!bounds.width) return;
-  const raw = ((event.clientX - bounds.left) / bounds.width) * 100;
-  const percent = Math.max(0, Math.min(100, raw));
-  seekToPercent(percent);
-}
-
-function onLocalVolumeChange(value) {
+const VOLUME_DEBOUNCE_MS = 100;
+const onLocalVolumeChange = debounce((value) => {
   const sliderValue = Array.isArray(value) ? value[0] : value;
   const nextPercent = Number(sliderValue ?? 0);
   if (!Number.isFinite(nextPercent)) return;
   setLocalVolume(nextPercent / 100);
-}
+}, VOLUME_DEBOUNCE_MS);
 </script>

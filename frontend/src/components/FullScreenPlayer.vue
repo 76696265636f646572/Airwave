@@ -7,12 +7,12 @@
       aria-label="Now playing"
     >
       <!-- Header: back, context, title, menu -->
-      <header class="fullscreen-player-header flex shrink-0 items-center justify-between gap-3 px-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))]">
+      <header class="fullscreen-player-header flex shrink-0 items-center justify-between gap-3 px-6 pb-2 pt-[max(1rem,env(safe-area-inset-top))]">
         <UButton
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-chevron-down"
+          icon="i-bi-chevron-down"
           size="lg"
           class="shrink-0"
           aria-label="Close"
@@ -30,7 +30,7 @@
           type="button"
           color="neutral"
           variant="ghost"
-          icon="i-lucide-more-vertical"
+          icon="i-bi-three-dots-vertical"
           size="lg"
           class="shrink-0"
           aria-label="More options"
@@ -51,7 +51,7 @@
         <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" aria-hidden="true" />
 
         <!-- Content overlay: thumbnail + title + artists + add, then progress -->
-        <div class="relative flex flex-col gap-4 px-4 pt-4 pb-6">
+        <div class="relative flex flex-col gap-4 px-6 pt-4 pb-6">
           <div class="flex items-start gap-4">
             <div class="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-white/10 shadow-xl">
               <img
@@ -64,7 +64,7 @@
                 v-else
                 class="flex h-full w-full items-center justify-center bg-neutral-800 text-4xl text-muted"
               >
-                <UIcon name="i-lucide-music" />
+                <UIcon name="i-bi-music-note-beamed" />
               </div>
             </div>
             <div class="min-w-0 flex-1 pt-1">
@@ -80,7 +80,7 @@
               type="button"
               color="neutral"
               variant="ghost"
-              icon="i-lucide-plus"
+              icon="i-bi-plus"
               size="lg"
               class="shrink-0 rounded-full border border-white/20"
               aria-label="Add to playlist"
@@ -88,40 +88,26 @@
           </div>
 
           <div class="space-y-2">
-            <div
-              ref="progressTrackEl"
-              class="cursor-pointer"
-              :class="{ 'pointer-events-none opacity-60': !playbackState.can_seek }"
-              role="button"
-              tabindex="0"
-              :aria-disabled="!playbackState.can_seek"
-              aria-label="Seek"
-              @click="onProgressClick"
-            >
-              <UProgress
-                :model-value="playbackState.progress_percent || 0"
-                :max="100"
-                color="primary"
-                size="md"
-                class="w-full"
-              />
-            </div>
-            <div class="flex justify-between text-xs text-muted">
-              <span>{{ formatDuration(playbackState.elapsed_seconds) }}</span>
-              <span>{{ formatDuration(playbackState.duration_seconds) }}</span>
-            </div>
+            <SongProgress
+              :progress-percent="playbackState.progress_percent ?? 0"
+              :elapsed-seconds="playbackState.elapsed_seconds"
+              :duration-seconds="playbackState.duration_seconds"
+              :can-seek="playbackState.can_seek"
+              size="md"
+              @seek="seekToPercent"
+            />
           </div>
         </div>
       </div>
 
       <!-- Controls: shuffle, prev, play/pause (large), next, repeat -->
       <div class="fullscreen-player-controls shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-        <div class="flex items-center justify-center gap-4">
+        <div class="flex items-center justify-center gap-4 mb-10">
           <UButton
             type="button"
             :color="playbackState.shuffle_enabled ? 'primary' : 'neutral'"
             :variant="playbackState.shuffle_enabled ? 'soft' : 'ghost'"
-            icon="i-lucide-shuffle"
+            icon="i-bi-shuffle"
             size="lg"
             aria-label="Shuffle"
             @click="setShuffleEnabled(!playbackState.shuffle_enabled)"
@@ -130,14 +116,14 @@
             type="button"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-skip-back"
+            icon="i-bi-skip-backward-fill"
             size="xl"
             aria-label="Previous"
             @click="previousTrack"
           />
           <UButton
             type="button"
-            color="primary"
+            color="neutral"
             variant="solid"
             size="xl"
             class="fullscreen-player-play-button min-h-[4.5rem] min-w-[4.5rem] flex items-center justify-center rounded-full p-0"
@@ -152,7 +138,7 @@
             type="button"
             color="neutral"
             variant="ghost"
-            icon="i-lucide-skip-forward"
+            icon="i-bi-skip-forward-fill"
             size="xl"
             aria-label="Next"
             @click="skipCurrent"
@@ -225,8 +211,7 @@
 </template>
 
 <script setup>
-import { computed, inject, ref, watch } from "vue";
-import { formatDuration } from "../composables/useDuration";
+import { computed, inject, watch } from "vue";
 import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaybackState } from "../composables/usePlaybackState";
 import { useUiState } from "../composables/useUiState";
@@ -241,7 +226,6 @@ const {
   toggleMuted,
 } = inject("localPlayback");
 
-const progressTrackEl = ref(null);
 const { playbackState } = usePlaybackState();
 const { fullScreenPlayerOpen } = useUiState();
 
@@ -258,9 +242,9 @@ const bgStyle = computed(() => {
 });
 
 const playPauseIcon = computed(() =>
-  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-lucide-pause" : "i-lucide-play"
+  playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
-const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-lucide-repeat-1" : "i-lucide-repeat"));
+const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";
   if (playbackState.value.repeat_mode === "one") return "Repeat one";
@@ -268,9 +252,9 @@ const repeatLabel = computed(() => {
 });
 const localVolumePercent = computed(() => Math.round((localVolume.value || 0) * 100));
 const localVolumeIcon = computed(() => {
-  if (isMuted.value || localVolume.value <= 0) return "i-lucide-volume-x";
-  if (localVolume.value < 0.5) return "i-lucide-volume-1";
-  return "i-lucide-volume-2";
+  if (isMuted.value || localVolume.value <= 0) return "i-bi-volume-mute-fill";
+  if (localVolume.value < 0.5) return "i-bi-volume-down-fill";
+  return "i-bi-volume-up-fill";
 });
 
 function close() {
@@ -282,15 +266,6 @@ function cycleRepeatMode() {
   const currentMode = playbackState.value.repeat_mode || "off";
   const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
   setRepeatMode(nextMode);
-}
-
-function onProgressClick(event) {
-  if (!progressTrackEl.value || !playbackState.value.can_seek) return;
-  const bounds = progressTrackEl.value.getBoundingClientRect();
-  if (!bounds.width) return;
-  const raw = ((event.clientX - bounds.left) / bounds.width) * 100;
-  const percent = Math.max(0, Math.min(100, raw));
-  seekToPercent(percent);
 }
 
 function onLocalVolumeChange(value) {

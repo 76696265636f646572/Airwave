@@ -31,6 +31,7 @@ class GracefulStreamingResponse(StreamingResponse):
 
 class AddUrlRequest(BaseModel):
     url: HttpUrl
+    target_playlist_id: UUID | None = None
 
 
 class ReorderRequest(BaseModel):
@@ -414,7 +415,7 @@ def playlist_preview(payload: AddUrlRequest, request: Request) -> dict[str, Any]
 
 @api_router.post("/playlist/import")
 def playlist_import(payload: AddUrlRequest, request: Request) -> dict[str, Any]:
-    result = _services(request)["playlist"].import_playlist(str(payload.url))
+    result = _services(request)["playlist"].import_playlist(str(payload.url), target_playlist_id=payload.target_playlist_id)
     _publish_ui_snapshot(request)
     return {"ok": True, **result}
 
@@ -550,7 +551,7 @@ async def websocket_events(websocket: WebSocket) -> None:
 def search_youtube(
     request: Request,
     q: str = Query(min_length=1),
-    limit: int = Query(default=10, ge=1, le=25),
+    limit: int = Query(default=10, ge=1, le=100),
 ) -> dict[str, Any]:
     results = _services(request)["yt_dlp"].search_videos(query=q, limit=limit)
     return {"query": q, "count": len(results), "results": results}

@@ -85,7 +85,7 @@ body {
     min-height: 2.75rem;
   }
 
-  /* Center play icon in mobile player bar (optical centering for play triangle) */
+  /* Center play icon in mobile player bar (optical centering for play icon) */
   .player-bar-mobile-play {
     display: flex;
     align-items: center;
@@ -101,7 +101,7 @@ body {
     display: block;
     margin: 0;
     flex-shrink: 0;
-    /* Lucide play triangle is drawn with extra space on the left; nudge left for optical center */
+    /* Play icon optical centering on mobile */
     transform: translateX(-1px);
   }
 

@@ -231,7 +231,7 @@ class Repository:
             playlist = session.get(Playlist, playlist_id)
             if playlist is None:
                 return None
-            if title is not None and playlist.source_url.startswith("custom://"):
+            if title is not None:
                 playlist.title = title
             if pinned is not None:
                 playlist.pinned = pinned
@@ -275,6 +275,20 @@ class Repository:
             playlist.entry_count = len(created)
             session.flush()
             return created
+
+    def add_playlist_entries(self, playlist_id: uuid.UUID, entries: list[NewPlaylistEntry]) -> list[PlaylistEntry]:
+        with self.session() as session:
+            playlist = session.get(Playlist, playlist_id)
+            if playlist is None:
+                return []
+                
+            for idx, entry in enumerate(entries, start=1):
+                self.add_playlist_entry(playlist_id, entry)
+                
+            count = session.scalar(select(func.count(PlaylistEntry.id)).where(PlaylistEntry.playlist_id == playlist_id)) 
+            playlist.entry_count = count
+            session.flush()
+            return True
 
     def add_playlist_entry(self, playlist_id: uuid.UUID, entry: NewPlaylistEntry) -> Optional[PlaylistEntry]:
         with self.session() as session:

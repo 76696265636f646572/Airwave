@@ -1,5 +1,5 @@
 <template>
-  <section class="home-page min-h-0 overflow-auto rounded-xl border border-neutral-700 p-4 md:p-6 surface-panel">
+  <section class="home-page min-h-0 min-w-0 overflow-auto rounded-xl border border-neutral-700 p-4 md:p-6 surface-panel">
     <!-- Hero -->
     <div class="home-hero mb-6 md:mb-8">
       <h1 class="text-3xl font-bold tracking-tight md:text-4xl">AirWave</h1>
@@ -28,7 +28,7 @@
           color="primary"
           variant="soft"
           size="sm"
-          icon="i-lucide-search"
+          icon="i-bi-search"
           @click="goToSearch"
         >
           Search
@@ -37,10 +37,10 @@
 
       <!-- Quick CTAs when nothing playing -->
       <div v-else class="mt-4 flex flex-wrap gap-2">
-        <UButton type="button" color="primary" variant="solid" size="md" icon="i-lucide-search" @click="goToSearch">
+        <UButton type="button" color="primary" variant="solid" size="md" icon="i-bi-search" @click="goToSearch">
           Search YouTube
         </UButton>
-        <UButton type="button" color="neutral" variant="outline" size="md" icon="i-lucide-list-music" @click="goToPlaylists">
+        <UButton type="button" color="neutral" variant="outline" size="md" icon="i-bi-music-note-list" @click="goToPlaylists">
           Browse playlists
         </UButton>
       </div>
@@ -66,9 +66,9 @@
     </div>
 
     <!-- Grid: playlists | queue/history | sonos -->
-    <div class="home-grid grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div class="home-grid min-w-0 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <!-- Featured playlists -->
-      <div class="home-section rounded-xl border p-4 surface-elevated">
+      <div class="home-section min-w-0 rounded-xl border p-4 surface-elevated">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-lg font-semibold">Playlists</h2>
           <UButton
@@ -76,7 +76,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToPlaylists"
           >
             View all
@@ -86,7 +86,7 @@
           <li
             v-for="playlist in featuredPlaylists"
             :key="playlist.id"
-            class="home-playlist-card flex cursor-pointer items-center gap-3 rounded-lg border p-2 transition-colors playlist-card"
+            class="home-playlist-card flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border p-2 transition-colors playlist-card"
             :class="playlist.id === activePlaylistId ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
             @click="openPlaylist(playlist.id)"
           >
@@ -97,7 +97,7 @@
               class="h-10 w-10 shrink-0 rounded object-cover"
             />
             <div v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-neutral-700/50">
-              <UIcon name="i-lucide-music" class="size-5 text-muted" />
+              <UIcon name="i-bi-music-note-beamed" class="size-5 text-muted" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{{ playlist.title }}</p>
@@ -111,7 +111,7 @@
       </div>
 
       <!-- Queue preview -->
-      <div class="home-section rounded-xl border p-4 surface-elevated">
+      <div class="home-section min-w-0 rounded-xl border p-4 surface-elevated">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-lg font-semibold">Up next</h2>
           <UButton
@@ -119,7 +119,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToQueue"
           >
             View queue
@@ -136,7 +136,7 @@
       </div>
 
       <!-- History preview -->
-      <div class="home-section rounded-xl border p-4 surface-elevated">
+      <div class="home-section min-w-0 rounded-xl border p-4 surface-elevated">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-lg font-semibold">Recently played</h2>
           <UButton
@@ -144,7 +144,7 @@
             color="neutral"
             variant="ghost"
             size="xs"
-            icon="i-lucide-chevron-right"
+            icon="i-bi-chevron-right"
             @click="goToHistory"
           >
             View history
@@ -161,7 +161,7 @@
       </div>
 
       <!-- Sonos card -->
-      <div v-if="speakers.length > 0" class="home-section home-sonos-card rounded-xl border p-4 surface-elevated lg:col-span-2">
+      <div v-if="speakers.length > 0" class="home-section home-sonos-card min-w-0 rounded-xl border p-4 surface-elevated lg:col-span-2">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-lg font-semibold">Sonos</h2>

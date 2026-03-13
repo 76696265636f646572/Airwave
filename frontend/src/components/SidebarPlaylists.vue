@@ -40,15 +40,16 @@
             <span class="block text-xs text-muted">{{ playlist.kind }} · {{ playlist.entry_count }}</span>
           </div>
         </div>
-        <div v-if="activePlaylistId === playlist.id" class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" @click.stop>
+        <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
           <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
             <UButton
               type="button"
-              icon="i-lucide-more-horizontal"
+              icon="i-bi-three-dots"
               color="neutral"
               variant="ghost"
               size="xs"
               aria-label="More actions"
+              class="cursor-pointer"
             />
           </UDropdownMenu>
         </div>
@@ -145,33 +146,34 @@ watch(playlistToRename, (p) => {
 function dropdownItemsFor(playlist) {
   const items = [
     [
-      { label: "Queue", icon: "i-lucide-list-music", onSelect: () => queuePlaylist(playlist.id) },
-    ],
-    [
-      { label: "Play now", icon: "i-lucide-play", onSelect: () => playPlaylistNow(playlist.id) },
+      { label: "Queue", icon: "i-bi-music-note-list", class: "cursor-pointer", onSelect: () => queuePlaylist(playlist.id) },
+      { label: "Play now", icon: "i-bi-play-fill", class: "cursor-pointer", onSelect: () => playPlaylistNow(playlist.id) },
     ],
   ];
-  if (playlist.kind === "custom") {
-    items.push([
-      { label: "Rename", icon: "i-lucide-pencil", onSelect: () => openRenameModal(playlist) },
-    ]);
-  }
+  let children = [];
+  children.push(
+    { label: "Rename", icon: "i-bi-pencil-fill", class: "cursor-pointer", onSelect: () => openRenameModal(playlist) },
+  );
+  
   const pinned = !!playlist.pinned;
-  items.push([
+  children.push(
     {
       label: pinned ? "Unpin" : "Pin",
-      icon: pinned ? "i-lucide-pin-off" : "i-lucide-pin",
+      icon: pinned ? "i-bi-pin" : "i-bi-pin-fill",
+      class: "cursor-pointer",
       onSelect: () => setPlaylistPinned(playlist.id, !pinned),
-    },
-  ]);
-  items.push([
+    },  
+  );
+  children.push(
     {
       label: "Delete",
-      icon: "i-lucide-trash-2",
+      icon: "i-bi-trash-fill",
+      class: "cursor-pointer",
       onSelect: () => openDeleteModal(playlist),
       color: "error",
     },
-  ]);
+  );
+  items.push(children);
   return items;
 }
 

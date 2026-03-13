@@ -1,5 +1,5 @@
 <template>
-  <div class="group flex items-center gap-3 rounded-md border px-3 py-2 playlist-card">
+  <div class="group flex min-w-0 items-center gap-3 rounded-md border px-3 py-2 playlist-card">
     
     <div
       v-if="thumbnailSrc"
@@ -17,7 +17,7 @@
         class="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
         aria-hidden
       >
-        <UIcon name="i-lucide-play" class="size-8 text-white drop-shadow-md" />
+        <UIcon name="i-bi-play-fill" class="size-8 text-white drop-shadow-md" />
       </div>
     </div>
     
@@ -37,29 +37,17 @@
     </div>
     <div
       v-if="dropdownItems.length > 0"
-      class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+      class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
       @click.stop
     >
-      <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && (playlistSearchTerm = '')">
+      <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && resetSearch()">
         <template #playlist-filter>
-          <div class="flex items-center gap-2 px-2 py-1.5">
-            <UIcon name="i-lucide-search" class="size-4 shrink-0 text-muted" />
-            <input
-              v-model="playlistSearchTerm"
-              type="text"
-              placeholder="Find a playlist"
-              class="min-w-0 flex-1 rounded-md border-0 bg-transparent px-2 py-1 text-sm placeholder-neutral-500 focus:outline-none focus:ring-0"
-              @click.stop
-              @keydown.stop
-              @keyup.stop
-              @keypress.stop
-            />
-          </div>
+          <PlaylistSelectorFilter v-model="playlistSearchTerm" placeholder="Find a playlist" />
         </template>
         <UButton
           class="cursor-pointer"
           type="button"
-          icon="i-lucide-more-horizontal"
+          icon="i-bi-three-dots"
           color="neutral"
           variant="ghost"
           size="xs"
@@ -71,13 +59,13 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
+import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
 import { fetchJson } from "../composables/useApi";
 import { formatDuration } from "../composables/useDuration";
 import { useNotifications } from "../composables/useNotifications";
-
-const playlistSearchTerm = ref("");
+import { usePlaylistSelector } from "../composables/usePlaylistSelector";
 
 const props = defineProps({
   item: {
@@ -105,6 +93,7 @@ const props = defineProps({
 
 const emit = defineEmits(["deleted"]);
 
+const { playlistSearchTerm, filteredPlaylists, resetSearch } = usePlaylistSelector(() => props.playlists);
 const { notifySuccess, notifyError } = useNotifications();
 
 const thumbnailSrc = computed(() => {
@@ -119,12 +108,6 @@ const showSecondary = computed(
   () => props.mode === "queue" || props.mode === "history" || (props.mode === "search" && props.item?.channel),
 );
 const showDuration = computed(() => props.mode === "search");
-
-const filteredPlaylists = computed(() => {
-  const term = playlistSearchTerm.value.toLowerCase().trim();
-  if (!term) return props.playlists;
-  return props.playlists.filter((p) => (p.title || "").toLowerCase().includes(term));
-});
 
 async function addToQueue(url) {
   if (!url) return;
@@ -166,7 +149,7 @@ async function addToPlaylist(playlistId, url) {
   } catch (error) {
     notifyError("Could not save to playlist", error);
   } finally {
-    playlistSearchTerm.value = "";
+    resetSearch();
   }
 }
 
@@ -196,7 +179,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Play now",
-        icon: "i-lucide-play",
+        icon: "i-bi-play-fill",
         onSelect: () => playNow(url),
       },
     );
@@ -205,7 +188,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Add to queue",
-        icon: "i-lucide-list-music",
+        icon: "i-bi-music-note-list",
         onSelect: () => addToQueue(url),
       },
     );
@@ -222,7 +205,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Add to playlist",
-        icon: "i-lucide-plus",
+        icon: "i-bi-plus",
         children: [addToPlaylistChildren],
       },
     );
@@ -234,7 +217,7 @@ const dropdownItems = computed(() => {
     items.push(
       {
         label: "Remove from playlist",
-        icon: "i-lucide-trash-2",
+        icon: "i-bi-trash-fill",
         onSelect: () => removeFromPlaylist(props.entryId),
       },
     );
