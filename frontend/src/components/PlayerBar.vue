@@ -64,8 +64,6 @@
           </p>
           <p class="truncate text-xs text-muted">
             {{ (playbackState.now_playing_channel || playbackState.mode || "idle").toUpperCase() }}
-            <span v-if="playbackState.elapsed_seconds != null"> · {{ formatDuration(playbackState.elapsed_seconds) }}</span>
-            <span v-if="playbackState.duration_seconds"> / {{ formatDuration(playbackState.duration_seconds) }}</span>
           </p>
         </div>
       </div>
