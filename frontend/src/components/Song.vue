@@ -40,21 +40,9 @@
       class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
       @click.stop
     >
-      <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && (playlistSearchTerm = '')">
+      <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && resetSearch()">
         <template #playlist-filter>
-          <div class="flex items-center gap-2 px-2 py-1.5">
-            <UIcon name="i-lucide-search" class="size-4 shrink-0 text-muted" />
-            <input
-              v-model="playlistSearchTerm"
-              type="text"
-              placeholder="Find a playlist"
-              class="min-w-0 flex-1 rounded-md border-0 bg-transparent px-2 py-1 text-sm placeholder-neutral-500 focus:outline-none focus:ring-0"
-              @click.stop
-              @keydown.stop
-              @keyup.stop
-              @keypress.stop
-            />
-          </div>
+          <PlaylistSelectorFilter v-model="playlistSearchTerm" placeholder="Find a playlist" />
         </template>
         <UButton
           class="cursor-pointer"
@@ -71,13 +59,13 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
+import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
 import { fetchJson } from "../composables/useApi";
 import { formatDuration } from "../composables/useDuration";
 import { useNotifications } from "../composables/useNotifications";
-
-const playlistSearchTerm = ref("");
+import { usePlaylistSelector } from "../composables/usePlaylistSelector";
 
 const props = defineProps({
   item: {
@@ -105,6 +93,7 @@ const props = defineProps({
 
 const emit = defineEmits(["deleted"]);
 
+const { playlistSearchTerm, filteredPlaylists, resetSearch } = usePlaylistSelector(() => props.playlists);
 const { notifySuccess, notifyError } = useNotifications();
 
 const thumbnailSrc = computed(() => {
@@ -119,12 +108,6 @@ const showSecondary = computed(
   () => props.mode === "queue" || props.mode === "history" || (props.mode === "search" && props.item?.channel),
 );
 const showDuration = computed(() => props.mode === "search");
-
-const filteredPlaylists = computed(() => {
-  const term = playlistSearchTerm.value.toLowerCase().trim();
-  if (!term) return props.playlists;
-  return props.playlists.filter((p) => (p.title || "").toLowerCase().includes(term));
-});
 
 async function addToQueue(url) {
   if (!url) return;
@@ -166,7 +149,7 @@ async function addToPlaylist(playlistId, url) {
   } catch (error) {
     notifyError("Could not save to playlist", error);
   } finally {
-    playlistSearchTerm.value = "";
+    resetSearch();
   }
 }
 

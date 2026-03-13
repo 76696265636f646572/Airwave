@@ -29,7 +29,10 @@
             <UButton type="submit" color="primary" variant="solid" size="md" class="flex-1 h-10 rounded-r-none sm:flex-none">
               {{ primaryActionLabel }}
             </UButton>
-            <UDropdownMenu :items="actionDropdownItems">
+            <UDropdownMenu :items="actionDropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && playlistSelector.resetSearch()">
+              <template #playlist-filter>
+                <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+              </template>
               <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
                 <UIcon name="i-lucide-chevron-down" class="size-4" />
               </UButton>
@@ -95,7 +98,10 @@
                 <UButton type="submit" color="primary" variant="solid" class="flex-1 rounded-r-none">
                   {{ primaryActionLabel }}
                 </UButton>
-                <UDropdownMenu :items="actionDropdownItems">
+                <UDropdownMenu :items="actionDropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && playlistSelector.resetSearch()">
+                  <template #playlist-filter>
+                    <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                  </template>
                   <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
                     <span aria-hidden="true">|</span>
                     <UIcon name="i-lucide-chevron-down" class="size-4" />
@@ -124,8 +130,10 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
+import { usePlaylistSelector } from "../composables/usePlaylistSelector";
 import { useUiState } from "../composables/useUiState";
 
 const { isMobile } = useBreakpoint();
@@ -133,7 +141,8 @@ const unifiedInput = ref("");
 const addUrlSheetOpen = ref(false);
 const router = useRouter();
 const route = useRoute();
-const { queue, addUrl, playUrl, importPlaylistUrl } = useLibraryState();
+const { queue, playlists, addUrl, playUrl, importPlaylistUrl, importPlaylistIntoPlaylist, addUrlToPlaylist } = useLibraryState();
+const playlistSelector = usePlaylistSelector(playlists);
 const { searchText, onSearchTextChange, onYoutubeSearch } = useUiState();
 
 const ACTION_IDS = {
@@ -236,24 +245,24 @@ const defaultActionId = computed(() => {
 
 const availableActions = computed(() => {
   let base = [
-    { id: ACTION_IDS.PLAY_URL, label: "Play" },
-    { id: ACTION_IDS.ADD_URL, label: "Queue" },
+    { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
+    { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
   ];
   if (actionContext.value === "start-radio") {
     base = [
-      { id: ACTION_IDS.ADD_URL, label: "Queue" },
-      { id: ACTION_IDS.PLAY_URL, label: "Play" },
-      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
+      { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist", icon: "i-lucide-play" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-lucide-list-music" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-lucide-download" },
     ];
   } else if (actionContext.value === "playlist-capable" || actionContext.value === "canonical-playlist") {
     base = [
-      { id: ACTION_IDS.PLAY_URL, label: "Play" },
+      { id: ACTION_IDS.PLAY_URL, label: "Play", icon: "i-lucide-play" },
       { id: ACTION_IDS.PLAY_PLAYLIST, label: "Play Playlist" },
-      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist" },
-      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist" },
-      { id: ACTION_IDS.ADD_URL, label: "Queue" },
+      { id: ACTION_IDS.QUEUE_PLAYLIST, label: "Queue Playlist", icon: "i-lucide-list-music" },
+      { id: ACTION_IDS.IMPORT_PLAYLIST, label: "Import playlist", icon: "i-lucide-download" },
+      { id: ACTION_IDS.ADD_URL, label: "Queue", icon: "i-lucide-list-music" },
     ];
   }
   // filter default action from base
@@ -268,15 +277,59 @@ const primaryActionLabel = computed(() => {
   return "Play";
 });
 
-const actionDropdownItems = computed(() => [
-  ...availableActions.value.map((action) => ({
+const isPlaylistOrRadioContext = computed(
+  () =>
+    actionContext.value === "start-radio"
+    || actionContext.value === "playlist-capable"
+    || actionContext.value === "canonical-playlist",
+);
+
+const actionDropdownItems = computed(() => {
+  const items = availableActions.value.map((action) => ({
     label: action.label,
+    icon: action.icon,
     onSelect: () => {
       const url = unifiedInput.value.trim();
       if (url) runAction(action.id, addUrlSheetOpen.value, url);
     },
-  })),
-]);
+  }));
+
+  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value) && playlists.value.length > 0) {
+    const rawUrl = unifiedInput.value.trim();
+    const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
+    const playlistChildren = [
+      { type: "label", slot: "playlist-filter" },
+      ...playlistSelector.filteredPlaylists.value.map((p) => ({
+        label: p.title,
+        onSelect: () => {
+          importPlaylistIntoPlaylist(urlForPlaylist, p.id);
+          unifiedInput.value = "";
+          addUrlSheetOpen.value = false;
+        },
+      })),
+    ];
+    const addToPlaylistChildren = [
+      { type: "label", slot: "playlist-filter" },
+      ...playlistSelector.filteredPlaylists.value.map((p) => ({
+        label: p.title,
+        onSelect: () => {
+          addUrlToPlaylist(p.id, urlForPlaylist);
+          unifiedInput.value = "";
+          addUrlSheetOpen.value = false;
+        },
+      })),
+    ];
+    items.push(
+      {
+        label: "Import into playlist",
+        icon: "i-lucide-download",
+        children: [playlistChildren],
+      },
+    );
+  }
+
+  return items;
+});
 
 function runAction(actionId, closeAfter = false, urlOverride = null) {
   const rawUrl = urlOverride ?? unifiedInput.value.trim();
