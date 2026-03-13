@@ -13,13 +13,7 @@ class PlaylistService:
 
     def add_url(self, url: str) -> dict:
         if self.yt_dlp_service.is_playlist_url(url):
-            imported = self.import_playlist(url)
-            queued = self.queue_playlist(imported["playlist_id"])
-            return {
-                **imported,
-                "count": queued["count"],
-                "item_ids": queued["item_ids"],
-            }
+            return self.queue_playlist_url(url)
         resolved = self.yt_dlp_service.resolve_video(url)
         created = self.repository.enqueue_items(
             [
@@ -43,6 +37,32 @@ class PlaylistService:
 
     def preview_playlist(self, url: str) -> PlaylistPreview:
         return self.yt_dlp_service.preview_playlist(url)
+
+    def queue_playlist_url(self, url: str, *, replace: bool = False) -> dict:
+        """Queue playlist entries from URL without importing to library."""
+        preview = self.yt_dlp_service.preview_playlist(url)
+        items = [
+            NewQueueItem(
+                source_url=e["source_url"],
+                normalized_url=e["normalized_url"],
+                source_type="video",
+                title=e.get("title"),
+                channel=e.get("channel"),
+                duration_seconds=e.get("duration_seconds"),
+                thumbnail_url=e.get("thumbnail_url"),
+            )
+            for e in preview.entries
+        ]
+        if replace:
+            created = self.repository.replace_queued_items(items)
+        else:
+            created = self.repository.enqueue_items(items)
+        return {
+            "type": "playlist",
+            "count": len(created),
+            "title": preview.title,
+            "item_ids": [item.id for item in created],
+        }
 
     def import_playlist(self, url: str) -> dict:
         preview = self.yt_dlp_service.preview_playlist(url)

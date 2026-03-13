@@ -65,7 +65,7 @@ def test_add_single_video(tmp_path):
     assert queue[0].title == "one"
 
 
-def test_import_playlist(tmp_path):
+def test_add_url_playlist_queues_without_importing(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/playlist2.db")
     repo.init_db()
     service = PlaylistService(repo, FakeYtDlp(playlist=True))
@@ -76,7 +76,7 @@ def test_import_playlist(tmp_path):
     queue = repo.list_queue()
     assert len(queue) == 2
     playlists = service.list_playlists()
-    assert playlists[0]["thumbnail_url"] == "https://img.youtube.com/pl.jpg"
+    assert len(playlists) == 0
 
 
 def test_playlist_thumbnail_falls_back_to_first_entry(tmp_path):
@@ -150,7 +150,7 @@ def test_update_playlist_rename_rejected_for_imported(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/imported.db")
     repo.init_db()
     service = PlaylistService(repo, FakeYtDlp(playlist=True))
-    service.add_url("https://youtube.com/playlist?list=x")
+    service.import_playlist("https://youtube.com/playlist?list=x")
     playlists = service.list_playlists()
     imported_id = next(p["id"] for p in playlists if p["kind"] == "imported")
     original_title = next(p["title"] for p in playlists if p["id"] == imported_id)
