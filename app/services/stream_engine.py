@@ -7,13 +7,14 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from collections import deque
 from enum import Enum
 from typing import Callable, Generator
 
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
-from app.services.yt_dlp_service import YtDlpError, YtDlpService
+from app.services.yt_dlp_service import ResolvedTrack, YtDlpError, YtDlpService
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,13 @@ class StreamEngine:
         self._on_state_change = on_state_change
         self._repeat_cycle_items: list[tuple[str, str, str, str | None, int | None, str | None]] = []
         self._shuffle_restore_order: list[int] | None = None
+        self._prefetch_next_count = 2
+        self._prefetch_previous_count = 2
+        self._resolved_cache_lock = threading.Lock()
+        self._resolved_track_cache: dict[int, ResolvedTrack] = {}
+        self._recent_resolved_by_url: dict[str, ResolvedTrack] = {}
+        self._recent_resolved_order: deque[str] = deque(maxlen=self._prefetch_previous_count)
+        self._prefetch_thread: threading.Thread | None = None
 
     def _notify_state_changed(self) -> None:
         if self._on_state_change is None:
@@ -277,10 +285,79 @@ class StreamEngine:
         )
         if queued:
             self.repository.move_item_to_front(queued[0].id)
+            self._seed_resolved_cache_from_recent(queued[0].id, previous.source_url)
         if self.state.mode == PlaybackMode.playing:
             self._request_interrupt("previous")
         self._notify_state_changed()
         return "previous"
+
+    def _cache_resolved_track(self, item_id: int, resolved: ResolvedTrack) -> None:
+        with self._resolved_cache_lock:
+            self._resolved_track_cache[item_id] = resolved
+
+    def _get_cached_resolved_track(self, item_id: int) -> ResolvedTrack | None:
+        with self._resolved_cache_lock:
+            return self._resolved_track_cache.get(item_id)
+
+    def _drop_cached_resolved_track(self, item_id: int) -> None:
+        with self._resolved_cache_lock:
+            self._resolved_track_cache.pop(item_id, None)
+
+    def _remember_recent_resolved_track(self, resolved: ResolvedTrack) -> None:
+        key = resolved.normalized_url
+        with self._resolved_cache_lock:
+            if key in self._recent_resolved_order:
+                self._recent_resolved_order.remove(key)
+            self._recent_resolved_order.append(key)
+            self._recent_resolved_by_url[key] = resolved
+            while len(self._recent_resolved_order) > self._prefetch_previous_count:
+                stale_key = self._recent_resolved_order.popleft()
+                self._recent_resolved_by_url.pop(stale_key, None)
+
+    def _seed_resolved_cache_from_recent(self, item_id: int, source_url: str) -> None:
+        normalized_url = self.yt_dlp_service.normalize_url(source_url)
+        with self._resolved_cache_lock:
+            cached = self._recent_resolved_by_url.get(normalized_url)
+            if cached is None:
+                return
+            self._resolved_track_cache[item_id] = cached
+
+    def _resolve_track_for_item(self, queue_item, *, force_refresh: bool) -> ResolvedTrack:
+        if not force_refresh:
+            cached = self._get_cached_resolved_track(queue_item.id)
+            if cached is not None:
+                return cached
+        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+        self._cache_resolved_track(queue_item.id, resolved)
+        return resolved
+
+    def _prefetch_upcoming_tracks(self) -> None:
+        try:
+            queue_items = self.repository.list_queue()
+            queued_items = [item for item in queue_items if item.status == QueueStatus.queued][: self._prefetch_next_count]
+            for queued_item in queued_items:
+                if self._get_cached_resolved_track(queued_item.id) is not None:
+                    continue
+                try:
+                    resolved = self.yt_dlp_service.resolve_video(queued_item.source_url)
+                except Exception:
+                    logger.debug("Failed prefetching queued track %s", queued_item.id, exc_info=True)
+                    continue
+                self._cache_resolved_track(queued_item.id, resolved)
+        finally:
+            with self._resolved_cache_lock:
+                self._prefetch_thread = None
+
+    def _trigger_prefetch_upcoming_tracks(self) -> None:
+        with self._resolved_cache_lock:
+            if self._prefetch_thread is not None and self._prefetch_thread.is_alive():
+                return
+            self._prefetch_thread = threading.Thread(
+                target=self._prefetch_upcoming_tracks,
+                daemon=True,
+                name="stream-engine-prefetch",
+            )
+            self._prefetch_thread.start()
 
     def subscribe(self) -> Generator[bytes, None, None]:
         return self.hub.subscribe()
@@ -537,7 +614,7 @@ class StreamEngine:
                     if self._stop_event.is_set():
                         raise InterruptedError("stop")
                     try:
-                        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+                        resolved = self._resolve_track_for_item(queue_item, force_refresh=attempt > 1)
                         resolved_duration_seconds = resolved.duration_seconds
                         probe_source = getattr(self.ffmpeg_pipeline, "probe_source", None)
                         try:
@@ -552,6 +629,8 @@ class StreamEngine:
                         except AttributeError:
                             probed_duration_seconds = None
                         self.repository.mark_item_resolved(queue_item.id, resolved.normalized_url)
+                        self._remember_recent_resolved_track(resolved)
+                        self._trigger_prefetch_upcoming_tracks()
                         if resolved.thumbnail_url:
                             self.state.now_playing_thumbnail_url = resolved.thumbnail_url
                         if resolved.channel:
@@ -697,6 +776,7 @@ class StreamEngine:
                                 exc,
                             )
                             raise
+                        self._drop_cached_resolved_track(queue_item.id)
                         logger.warning(
                             "Playback attempt %s/%s failed on track %s (%s): %s",
                             attempt,
