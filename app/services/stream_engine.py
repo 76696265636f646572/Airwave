@@ -722,7 +722,6 @@ class StreamEngine:
                             probed_duration_seconds = None
                         self.repository.mark_item_resolved(queue_item.id, resolved.normalized_url)
                         self._remember_recent_resolved_track(resolved)
-                        self._trigger_prefetch_upcoming_tracks()
                         if resolved.thumbnail_url:
                             self.state.now_playing_thumbnail_url = resolved.thumbnail_url
                         if resolved.channel:
@@ -850,6 +849,7 @@ class StreamEngine:
                         )
                         self._record_track_outcome(completed=True)
                         self._drop_prefetched_audio_path(queue_item.id)
+                        self._trigger_prefetch_upcoming_tracks()
                         self._notify_state_changed()
                         logger.info(
                             "Track %s completed on attempt %s/%s (elapsed=%.2fs bytes=%s chunks=%s)",
