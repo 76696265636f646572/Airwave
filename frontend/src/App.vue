@@ -1,17 +1,17 @@
 <template>
   <UApp :toaster="{ position: 'bottom-right' }">
-    <div class="app-shell min-h-dvh h-dvh overflow-hidden p-3 text-neutral-100 flex flex-col gap-3">
+    <div class="app-shell min-h-dvh md:h-dvh overflow-y-auto md:overflow-hidden p-3 text-neutral-100 flex flex-col gap-3">
       <TopBar />
 
       <div
-        class="main-grid min-h-0 flex-1 flex min-w-0 gap-3 xl:grid xl:grid-cols-[260px_minmax(0,1fr)_340px] xl:grid-rows-1"
+        class="main-grid min-h-0 w-full flex-none md:flex-1 flex min-w-0 gap-3 xl:grid xl:grid-cols-[260px_minmax(0,1fr)_340px] xl:grid-rows-1"
         :class="{ 'main-grid-with-mobile-bottom': isMobile }"
       >
         <div class="min-h-0 h-full flex flex-col overflow-hidden hidden md:flex xl:flex">
           <SidebarPlaylists class="min-h-0 min-w-0 flex-1" />
         </div>
 
-        <main class="main-content min-h-0 flex-1 flex min-w-0 flex-col overflow-hidden">
+        <main class="main-content min-h-0 w-full flex-none md:flex-1 flex min-w-0 flex-col overflow-visible md:overflow-hidden">
           <!-- Desktop: single RouterView -->
           <template v-if="!isMobile">
             <div class="min-h-0 flex-1 overflow-auto">
@@ -24,7 +24,7 @@
           <template v-else>
             <div
               v-show="mobileView === MOBILE_VIEW_HOME"
-              class="mobile-pane min-h-0 flex-1 overflow-auto"
+              class="mobile-pane min-h-0 w-full flex-none md:flex-1 overflow-visible md:overflow-auto"
             >
               <RouterView v-slot="{ Component }">
                 <component :is="Component" />
@@ -32,13 +32,13 @@
             </div>
             <div
               v-show="mobileView === MOBILE_VIEW_PLAYLISTS"
-              class="mobile-pane min-h-0 flex-1 overflow-auto rounded-xl border border-neutral-700 surface-panel"
+              class="mobile-pane min-h-0 w-full flex-none md:flex-1 overflow-visible md:overflow-auto rounded-xl border border-neutral-700 surface-panel"
             >
               <SidebarPlaylists class="h-full min-h-0" />
             </div>
             <div
               v-show="mobileView === MOBILE_VIEW_QUEUE"
-              class="mobile-pane min-h-0 flex-1 flex flex-col overflow-hidden rounded-xl border border-neutral-700 surface-panel"
+              class="mobile-pane min-h-0 w-full flex-none md:flex-1 flex flex-col overflow-visible md:overflow-hidden rounded-xl border border-neutral-700 surface-panel"
             >
               <UTabs
                 v-model="activeQueueTab"
@@ -57,7 +57,7 @@
             </div>
             <div
               v-show="mobileView === MOBILE_VIEW_SONOS"
-              class="mobile-pane min-h-0 flex-1 overflow-auto rounded-xl border border-neutral-700 surface-panel"
+              class="mobile-pane min-h-0 w-full flex-none md:flex-1 overflow-visible md:overflow-auto rounded-xl border border-neutral-700 surface-panel"
             >
               <SonosPanel class="min-h-0 h-full" />
             </div>
