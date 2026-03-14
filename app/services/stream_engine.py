@@ -13,7 +13,7 @@ from typing import Callable, Generator
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
-from app.services.yt_dlp_service import YtDlpError, YtDlpService
+from app.services.yt_dlp_service import ResolvedTrack, YtDlpError, YtDlpService
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,12 @@ class StreamEngine:
         self._on_state_change = on_state_change
         self._repeat_cycle_items: list[tuple[str, str, str, str | None, int | None, str | None]] = []
         self._shuffle_restore_order: list[int] | None = None
+        self._resolved_cache_lock = threading.Lock()
+        self._resolved_track_cache: dict[str, ResolvedTrack] = {}
+        self._recent_sources: list[str] = []
+        self._prefetch_worker: threading.Thread | None = None
+        self._cache_lookback_count = 2
+        self._cache_lookahead_count = 2
 
     def _notify_state_changed(self) -> None:
         if self._on_state_change is None:
@@ -167,6 +173,12 @@ class StreamEngine:
         self._worker.start()
         self._stats_worker = threading.Thread(target=self._log_stats_loop, daemon=True, name="stream-engine-stats")
         self._stats_worker.start()
+        self._prefetch_worker = threading.Thread(
+            target=self._prefetch_loop,
+            daemon=True,
+            name="stream-engine-prefetch",
+        )
+        self._prefetch_worker.start()
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -175,6 +187,8 @@ class StreamEngine:
             self._worker.join(timeout=3)
         if self._stats_worker:
             self._stats_worker.join(timeout=3)
+        if self._prefetch_worker:
+            self._prefetch_worker.join(timeout=3)
 
     def skip_current(self) -> None:
         self._request_interrupt("skip")
@@ -411,6 +425,61 @@ class StreamEngine:
             self._pending_seek_seconds = None
         return max(0.0, float(default if pending is None else pending))
 
+    def _remember_recent_source(self, source_url: str) -> None:
+        if not source_url:
+            return
+        self._recent_sources = [url for url in self._recent_sources if url != source_url]
+        self._recent_sources.append(source_url)
+        if len(self._recent_sources) > (self._cache_lookback_count + 1):
+            self._recent_sources = self._recent_sources[-(self._cache_lookback_count + 1) :]
+
+    def _resolve_with_cache(self, source_url: str) -> ResolvedTrack:
+        with self._resolved_cache_lock:
+            cached = self._resolved_track_cache.get(source_url)
+        if cached is not None:
+            return cached
+        resolved = self.yt_dlp_service.resolve_video(source_url)
+        with self._resolved_cache_lock:
+            self._resolved_track_cache[source_url] = resolved
+        return resolved
+
+    def _prefetch_upcoming_tracks(self) -> None:
+        queued_ids = self.repository.list_queued_ids()
+        for item_id in queued_ids[: self._cache_lookahead_count]:
+            queued_item = self.repository.get_item(item_id)
+            if queued_item is None:
+                continue
+            try:
+                self._resolve_with_cache(queued_item.source_url)
+            except YtDlpError:
+                logger.debug("Prefetch resolve failed for queued item %s", queued_item.id)
+        self._prune_resolved_cache()
+
+    def _prefetch_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self._prefetch_upcoming_tracks()
+            except Exception:
+                logger.debug("Prefetch loop failed", exc_info=True)
+            self._stop_event.wait(self.queue_poll_seconds)
+
+    def _prune_resolved_cache(self) -> None:
+        queued_ids = self.repository.list_queued_ids()
+        keep_sources = set(self._recent_sources[-self._cache_lookback_count :])
+        for item_id in queued_ids[: self._cache_lookahead_count]:
+            queued_item = self.repository.get_item(item_id)
+            if queued_item is not None:
+                keep_sources.add(queued_item.source_url)
+        now_playing_id = self.state.now_playing_id
+        if now_playing_id is not None:
+            now_playing_item = self.repository.get_item(now_playing_id)
+            if now_playing_item is not None:
+                keep_sources.add(now_playing_item.source_url)
+        with self._resolved_cache_lock:
+            stale_sources = [source for source in self._resolved_track_cache if source not in keep_sources]
+            for source in stale_sources:
+                self._resolved_track_cache.pop(source, None)
+
     def _request_interrupt(self, reason: str, *, terminate: bool = True) -> None:
         with self._control_lock:
             self._control_reason = reason
@@ -520,6 +589,8 @@ class StreamEngine:
         self.state.now_playing_channel = queue_item.channel
         self.state.now_playing_thumbnail_url = queue_item.thumbnail_url
         self.state.now_playing_duration_seconds = queue_item.duration_seconds
+        self._remember_recent_source(queue_item.source_url)
+        self._prune_resolved_cache()
         start_offset_seconds = self._consume_pending_seek_seconds()
         self._set_playback_offset_seconds(start_offset_seconds)
         self.state.paused = False
@@ -537,7 +608,7 @@ class StreamEngine:
                     if self._stop_event.is_set():
                         raise InterruptedError("stop")
                     try:
-                        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+                        resolved = self._resolve_with_cache(queue_item.source_url)
                         resolved_duration_seconds = resolved.duration_seconds
                         probe_source = getattr(self.ffmpeg_pipeline, "probe_source", None)
                         try:
@@ -563,7 +634,7 @@ class StreamEngine:
                         start_offset_seconds = seek_offset
 
                         spawn_for_source = getattr(self.ffmpeg_pipeline, "spawn_for_source", None)
-                        if callable(spawn_for_source) and seek_offset > 0:
+                        if callable(spawn_for_source):
                             source_process = None
                             process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)

@@ -276,3 +276,73 @@ def test_shuffle_reorders_queue_and_restores_previous_order(tmp_path, monkeypatc
 
     assert engine.set_shuffle_enabled(False) is False
     assert repo.list_queued_ids() == original_ids
+
+
+class CountingYtDlp(FakeYtDlp):
+    def __init__(self) -> None:
+        self.resolve_calls: dict[str, int] = {}
+
+    def resolve_video(self, url: str) -> ResolvedTrack:
+        self.resolve_calls[url] = self.resolve_calls.get(url, 0) + 1
+        return super().resolve_video(url)
+
+
+def test_prefetch_resolves_upcoming_tracks_and_reuses_cache(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/prefetch.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [
+            NewQueueItem(source_url="u1", normalized_url="u1", source_type="video", title="One"),
+            NewQueueItem(source_url="u2", normalized_url="u2", source_type="video", title="Two"),
+            NewQueueItem(source_url="u3", normalized_url="u3", source_type="video", title="Three"),
+        ]
+    )
+    _ = repo.dequeue_next()
+
+    ytdlp = CountingYtDlp()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=ytdlp,
+        ffmpeg_pipeline=FakeFfmpeg(),
+        queue_poll_seconds=0.01,
+    )
+
+    engine._prefetch_upcoming_tracks()  # noqa: SLF001 - cache warmup coverage
+
+    assert ytdlp.resolve_calls == {"u2": 1, "u3": 1}
+
+    engine._play_item(created[1].id)  # noqa: SLF001 - cache reuse coverage
+
+    assert ytdlp.resolve_calls["u2"] == 1
+
+
+def test_prune_resolved_cache_keeps_recent_and_upcoming(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/prune.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [
+            NewQueueItem(source_url="u1", normalized_url="u1", source_type="video", title="One"),
+            NewQueueItem(source_url="u2", normalized_url="u2", source_type="video", title="Two"),
+            NewQueueItem(source_url="u3", normalized_url="u3", source_type="video", title="Three"),
+        ]
+    )
+    _ = repo.dequeue_next()
+
+    ytdlp = CountingYtDlp()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=ytdlp,
+        ffmpeg_pipeline=FakeFfmpeg(),
+        queue_poll_seconds=0.01,
+    )
+
+    engine._resolve_with_cache("u1")  # noqa: SLF001
+    engine._resolve_with_cache("u2")  # noqa: SLF001
+    engine._resolve_with_cache("u3")  # noqa: SLF001
+    engine._resolve_with_cache("orphan")  # noqa: SLF001
+    engine._remember_recent_source("u1")  # noqa: SLF001
+
+    engine._prune_resolved_cache()  # noqa: SLF001
+
+    assert set(engine._resolved_track_cache.keys()) == {"u1", "u2", "u3"}  # noqa: SLF001
+
