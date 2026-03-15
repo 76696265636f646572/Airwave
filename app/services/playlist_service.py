@@ -74,8 +74,6 @@ class PlaylistService:
         if not target_playlist_id:
             playlist = self.repository.create_or_update_playlist(
                 source_url=preview.source_url,
-                provider=preview.provider,
-                provider_item_id=None,
                 title=preview.title,
                 channel=preview.channel,
                 entry_count=len(preview.entries),

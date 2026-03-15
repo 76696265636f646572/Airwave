@@ -85,7 +85,6 @@ class Repository:
         if self.engine.url.get_backend_name() != "sqlite":
             return
         tables = {
-            "playlists": ("provider", "provider_item_id"),
             "queue_items": ("provider", "provider_item_id"),
             "playlist_entries": ("provider", "provider_item_id"),
             "play_history": ("provider", "provider_item_id"),
@@ -219,8 +218,6 @@ class Repository:
     def create_or_update_playlist(
         self,
         source_url: str,
-        provider: str | None,
-        provider_item_id: str | None,
         title: str | None,
         channel: str | None,
         entry_count: int,
@@ -231,8 +228,6 @@ class Repository:
             if playlist is None:
                 playlist = Playlist(
                     source_url=source_url,
-                    provider=provider,
-                    provider_item_id=provider_item_id,
                     title=title,
                     channel=channel,
                     thumbnail_url=thumbnail_url,
@@ -240,8 +235,6 @@ class Repository:
                 )
                 session.add(playlist)
             else:
-                playlist.provider = provider
-                playlist.provider_item_id = provider_item_id
                 playlist.title = title
                 playlist.channel = channel
                 playlist.thumbnail_url = thumbnail_url
@@ -253,8 +246,6 @@ class Repository:
         with self.session() as session:
             playlist = Playlist(
                 source_url=f"custom://{datetime.now(timezone.utc).timestamp()}",
-                provider="custom",
-                provider_item_id=None,
                 title=title,
                 channel="Custom",
                 entry_count=0,

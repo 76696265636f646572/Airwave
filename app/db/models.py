@@ -28,8 +28,6 @@ class Playlist(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    provider_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     channel: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
