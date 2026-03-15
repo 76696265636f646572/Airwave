@@ -34,7 +34,7 @@
         <template v-else-if="mode === 'history'">{{ item.status }}</template>
         <template v-else-if="mode === 'search' && item.channel">{{ item.channel }}</template>
       </p>
-      <p v-if="showDuration && item.duration_seconds != null" class="truncate text-xs text-muted">
+      <p v-if="item.duration_seconds != null" class="truncate text-xs text-muted">
         {{ formatDuration(item.duration_seconds) }}
       </p>
     </div>
@@ -111,7 +111,6 @@ const thumbnailSrc = computed(() => {
 const showSecondary = computed(
   () => props.mode === "queue" || props.mode === "history" || (props.mode === "search" && props.item?.channel),
 );
-const showDuration = computed(() => props.mode === "search");
 
 const providerLabel = computed(() => {
   const item = props.item;
