@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -117,24 +118,43 @@ class YtDlpService:
     def search(self, query: str, limit: int = 10, providers: list[str] | None = None) -> list[dict[str, Any]]:
         active_providers = providers or ["youtube", "soundcloud", "mixcloud"]
         results: list[dict[str, Any]] = []
+        provider_extractors: list[tuple[str, Any]] = []
         for provider in active_providers:
             extractor = self.dispatcher.get_extractor_for_provider(provider)
             if extractor is None:
                 continue
-            payload = self.client.search_json(query=query, provider=provider, limit=limit)
-            for item in extractor.extract_search_results(payload):
-                results.append(
-                    {
-                        "provider": item.provider,
-                        "provider_item_id": item.provider_item_id,
-                        "source_url": item.source_url,
-                        "normalized_url": item.normalized_url,
-                        "title": item.title,
-                        "channel": item.channel,
-                        "duration_seconds": item.duration_seconds,
-                        "thumbnail_url": item.thumbnail_url,
-                    }
+            provider_extractors.append((provider, extractor))
+
+        if not provider_extractors:
+            return results
+
+        futures_by_provider: dict[str, Any] = {}
+        max_workers = min(len(provider_extractors), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for provider, _extractor in provider_extractors:
+                futures_by_provider[provider] = executor.submit(
+                    self.client.search_json,
+                    query=query,
+                    provider=provider,
+                    limit=limit,
                 )
+
+            # Preserve provider ordering even though requests run concurrently.
+            for provider, extractor in provider_extractors:
+                payload = futures_by_provider[provider].result()
+                for item in extractor.extract_search_results(payload):
+                    results.append(
+                        {
+                            "provider": item.provider,
+                            "provider_item_id": item.provider_item_id,
+                            "source_url": item.source_url,
+                            "normalized_url": item.normalized_url,
+                            "title": item.title,
+                            "channel": item.channel,
+                            "duration_seconds": item.duration_seconds,
+                            "thumbnail_url": item.thumbnail_url,
+                        }
+                    )
         return results
 
     def search_videos(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
