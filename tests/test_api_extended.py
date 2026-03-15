@@ -455,10 +455,14 @@ def test_playlist_library_endpoints(tmp_path):
         assert len(listed) == 1
         assert listed[0]["id"] == str(TEST_PLAYLIST_UUID)
         assert listed[0]["thumbnail_url"] == "https://img.youtube.com/pl.jpg"
+        assert "provider" not in listed[0]
+        assert "provider_item_id" not in listed[0]
 
         fetched = client.get(f"/api/playlists/{TEST_PLAYLIST_UUID}")
         assert fetched.status_code == 200
         assert fetched.json()["title"] == "Imported Playlist"
+        assert "provider" not in fetched.json()
+        assert "provider_item_id" not in fetched.json()
 
         missing_playlist = client.get("/api/playlists/00000000-0000-0000-0000-000000000001")
         assert missing_playlist.status_code == 404

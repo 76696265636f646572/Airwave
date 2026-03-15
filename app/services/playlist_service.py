@@ -127,8 +127,6 @@ class PlaylistService:
             "description": playlist.description or None,
             "channel": playlist.channel,
             "source_url": playlist.source_url,
-            "provider": playlist.provider,
-            "provider_item_id": playlist.provider_item_id,
             "thumbnail_url": thumbnail_url,
             "entry_count": playlist.entry_count,
             "pinned": playlist.pinned,

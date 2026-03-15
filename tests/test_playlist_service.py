@@ -93,6 +93,8 @@ def test_playlist_thumbnail_falls_back_to_first_entry(tmp_path):
     service.import_playlist("https://youtube.com/playlist?list=x")
     playlists = service.list_playlists()
     assert playlists[0]["thumbnail_url"] == "https://i.ytimg.com/vi/1/hqdefault.jpg"
+    assert "provider" not in playlists[0]
+    assert "provider_item_id" not in playlists[0]
 
 
 def test_import_playlist_endpoint_behavior_is_library_only(tmp_path):
@@ -136,6 +138,8 @@ def test_update_playlist_rename_and_pin(tmp_path):
     pid = created["id"]
     assert created["title"] == "Original"
     assert created["pinned"] is False
+    assert "provider" not in created
+    assert "provider_item_id" not in created
 
     updated = service.update_playlist(pid, title="Renamed")
     assert updated["title"] == "Renamed"
