@@ -26,6 +26,9 @@
         <template v-if="mode === 'queue' && item.queue_position != null">#{{ item.queue_position }} </template>
         {{ item.title || item.source_url }}
       </p>
+      <p v-if="item.provider" class="truncate text-xs text-muted">
+        <UBadge :label="providerLabel" color="neutral" variant="soft" class="shrink-0" />
+      </p>
       <p v-if="showSecondary" class="truncate text-xs text-muted">
         <template v-if="mode === 'queue'">{{ item.status }} · {{ item.channel || "unknown" }}</template>
         <template v-else-if="mode === 'history'">{{ item.status }}</template>
@@ -109,6 +112,15 @@ const showSecondary = computed(
   () => props.mode === "queue" || props.mode === "history" || (props.mode === "search" && props.item?.channel),
 );
 const showDuration = computed(() => props.mode === "search");
+
+const providerLabel = computed(() => {
+  const item = props.item;
+  if (item?.provider) {
+    return item.provider.charAt(0).toUpperCase() + item.provider.slice(1);
+  }
+  return "";
+});
+
 
 async function addToQueue(url) {
   if (!url) return;
