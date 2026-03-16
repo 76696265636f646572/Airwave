@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import pytest
+from urllib.parse import urlparse
 
 from app.db.repository import Repository
 from app.services.yt_dlp_service import cookie_setting_key
@@ -60,7 +61,9 @@ class _CaptureClient:
 
     def get_single_json(self, url: str, cookie_file: str | None = None) -> dict[str, object]:
         self.single_calls.append((url, cookie_file))
-        if "youtube" in url or "youtu.be" in url:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if host == "youtu.be" or host.endswith("youtube.com"):
             return {
                 "id": "abc",
                 "title": "YouTube Track",
@@ -69,7 +72,7 @@ class _CaptureClient:
                 "thumbnail": "https://img.youtube.com/abc.jpg",
                 "webpage_url": "https://www.youtube.com/watch?v=abc",
             }
-        if "soundcloud.com" in url:
+        if host == "soundcloud.com" or host.endswith(".soundcloud.com"):
             return {
                 "id": 11,
                 "title": "SoundCloud Track",
