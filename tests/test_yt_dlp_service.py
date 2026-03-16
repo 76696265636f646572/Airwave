@@ -63,7 +63,7 @@ class _CaptureClient:
         self.single_calls.append((url, cookie_file))
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
-        if host == "youtu.be" or host.endswith("youtube.com"):
+        if host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com"):
             return {
                 "id": "abc",
                 "title": "YouTube Track",
