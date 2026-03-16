@@ -215,7 +215,7 @@ def health(request: Request) -> dict[str, str]:
 
 def _is_binary_in_use(name: str, engine: StreamEngine) -> bool:
     """True if the binary is currently running (e.g. ffmpeg/yt-dlp during playback)."""
-    if engine.state.mode != PlaybackMode.playing and engine.state.mode != PlaybackMode.paused:
+    if engine.state.mode != PlaybackMode.playing:
         return False
     return name in ("ffmpeg", "yt-dlp")
 
