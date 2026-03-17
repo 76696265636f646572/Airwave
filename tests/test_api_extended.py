@@ -382,6 +382,35 @@ def test_history_endpoint_includes_thumbnail_metadata(tmp_path):
         assert payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
 
 
+def test_queue_and_history_generate_youtube_thumbnail_when_missing(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://www.youtube.com/watch?v=thumb123",
+                    normalized_url="https://www.youtube.com/watch?v=thumb123",
+                    source_type="video",
+                    title="Song",
+                    thumbnail_url=None,
+                )
+            ]
+        )
+        queue_resp = client.get("/api/queue")
+        assert queue_resp.status_code == 200
+        queue_payload = queue_resp.json()
+        assert queue_payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/thumb123/hqdefault.jpg"
+
+        item = app.state.repository.dequeue_next()
+        assert item is not None
+        app.state.repository.mark_playback_finished(created[0].id, QueueStatus.completed)
+
+        history_resp = client.get("/api/history")
+        assert history_resp.status_code == 200
+        history_payload = history_resp.json()
+        assert history_payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/thumb123/hqdefault.jpg"
+
+
 def test_play_now_endpoint_adds_video_and_returns_item_ids(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:

@@ -16,26 +16,26 @@
     </div>
     <div class="mt-3 min-h-0 flex-1 pr-1">
       <UScrollArea :ui="{ viewport: 'gap-2 pr-1' }" class="h-full min-h-0">
-          <ul class="space-y-2">
-            <li v-for="item in playingItems" :key="item.id">
-              <Song :item="item" mode="queue" :playlists="playlists" />
-            </li>
-          </ul>
-          <VueDraggable
-            v-model="queuedItems"
-            tag="ul"
-            class="space-y-2"
-            :animation="150"
-            :delay="200"
-            :delay-on-touch-only="true"
-            ghost-class="queue-drag-ghost"
-            chosen-class="queue-drag-chosen"
-            @end="onReorderEnd"
-          >
-            <li v-for="item in queuedItems" :key="item.id">
-              <Song :item="item" mode="queue" :playlists="playlists" />
-            </li>
-          </VueDraggable>
+        <ul class="space-y-2">
+          <li v-for="item in playingItems" :key="item.id">
+            <Song :item="item" mode="queue" :playlists="playlists" />
+          </li>
+        </ul>
+        <VueDraggable
+          v-model="queuedItems"
+          tag="ul"
+          class="space-y-2"
+          :animation="150"
+          :delay="200"
+          :delay-on-touch-only="true"
+          ghost-class="queue-drag-ghost"
+          chosen-class="queue-drag-chosen"
+          @end="onReorderEnd"
+        >
+          <li v-for="item in queuedItems" :key="item.id">
+            <Song :item="item" mode="queue" :playlists="playlists" />
+          </li>
+        </VueDraggable>
       </UScrollArea>
     </div>
   </section>
@@ -57,8 +57,7 @@ const playingItems = computed(() => queue.value.filter((item) => item.status ===
 const queuedItems = ref([]);
 
 function syncQueuedItems() {
-  const queued = queue.value.filter((item) => item.status === "queued");
-  queuedItems.value = [...queued];
+  queuedItems.value = queue.value.filter((item) => item.status === "queued");
 }
 
 watch(queue, syncQueuedItems, { immediate: true });
