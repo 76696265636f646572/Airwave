@@ -16,11 +16,7 @@
     </div>
     <ul class="mt-3 min-h-0 flex-1 space-y-2 overflow-auto pr-1">
       <li v-for="item in history" :key="item.id">
-        <Song
-          :item="item"
-          mode="history"
-          :playlists="playlists"
-        />
+        <Song :item="item" mode="history" :playlists="playlists" />
       </li>
     </ul>
   </section>

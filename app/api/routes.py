@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -12,6 +13,11 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.services.stream_engine import PlaybackMode, StreamEngine
+from app.services.yt_dlp_service import (
+    cookie_setting_key,
+    is_supported_cookie_provider,
+    list_cookie_providers,
+)
 
 root_router = APIRouter()
 api_router = APIRouter()
@@ -82,6 +88,11 @@ class InstallBinaryRequest(BaseModel):
     stop_stream_first: bool = False
 
 
+class CookieSettingUpdateRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=50)
+    value: str = Field(min_length=1)
+
+
 def _services(request: Request) -> dict[str, Any]:
     return {
         "repo": request.app.state.repository,
@@ -122,6 +133,25 @@ def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
 
 
 def _serialize_queue_items(items: list[Any]) -> list[dict[str, Any]]:
+    def resolved_thumbnail(item: Any) -> str | None:
+        if item.thumbnail_url:
+            return item.thumbnail_url
+        provider_item_id = getattr(item, "provider_item_id", None)
+        if provider_item_id:
+            return f"https://i.ytimg.com/vi/{provider_item_id}/hqdefault.jpg"
+        source_url = getattr(item, "source_url", None) or ""
+        parsed = urlparse(source_url)
+        host = (parsed.netloc or "").lower()
+        if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
+            video_id = (parse_qs(parsed.query).get("v") or [None])[0]
+            if video_id:
+                return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        if host in {"youtu.be", "www.youtu.be"}:
+            video_id = (parsed.path or "").strip("/")
+            if video_id:
+                return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        return None
+
     return [
         {
             "id": item.id,
@@ -134,7 +164,7 @@ def _serialize_queue_items(items: list[Any]) -> list[dict[str, Any]]:
             "source_type": item.source_type,
             "channel": item.channel,
             "duration_seconds": item.duration_seconds,
-            "thumbnail_url": item.thumbnail_url,
+            "thumbnail_url": resolved_thumbnail(item),
             "playlist_id": item.playlist_id,
         }
         for item in items
@@ -142,6 +172,25 @@ def _serialize_queue_items(items: list[Any]) -> list[dict[str, Any]]:
 
 
 def _serialize_history_rows(rows: list[Any]) -> list[dict[str, Any]]:
+    def resolved_thumbnail(row: Any) -> str | None:
+        if row.thumbnail_url:
+            return row.thumbnail_url
+        provider_item_id = getattr(row, "provider_item_id", None)
+        if provider_item_id:
+            return f"https://i.ytimg.com/vi/{provider_item_id}/hqdefault.jpg"
+        source_url = getattr(row, "source_url", None) or ""
+        parsed = urlparse(source_url)
+        host = (parsed.netloc or "").lower()
+        if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
+            video_id = (parse_qs(parsed.query).get("v") or [None])[0]
+            if video_id:
+                return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        if host in {"youtu.be", "www.youtu.be"}:
+            video_id = (parsed.path or "").strip("/")
+            if video_id:
+                return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+        return None
+
     return [
         {
             "id": row.id,
@@ -150,7 +199,7 @@ def _serialize_history_rows(rows: list[Any]) -> list[dict[str, Any]]:
             "source_url": row.source_url,
             "provider": row.provider,
             "provider_item_id": row.provider_item_id,
-            "thumbnail_url": row.thumbnail_url,
+            "thumbnail_url": resolved_thumbnail(row),
             "status": row.status,
             "started_at": row.started_at,
             "finished_at": row.finished_at,
@@ -273,6 +322,40 @@ def state(request: Request) -> dict[str, Any]:
     services = _services(request)
     engine: StreamEngine = services["engine"]
     return _serialize_state(engine, _stream_url(request))
+
+
+@api_router.get("/settings/cookies")
+def list_cookie_settings(request: Request) -> dict[str, list[dict[str, Any]]]:
+    repo = _services(request)["repo"]
+    providers = []
+    for provider_info in list_cookie_providers():
+        provider = provider_info["provider"]
+        providers.append(
+            {
+                "provider": provider,
+                "label": provider_info["label"],
+                "configured": bool(repo.get_setting(cookie_setting_key(provider))),
+            }
+        )
+    return {"providers": providers}
+
+
+@api_router.put("/settings/cookies")
+def update_cookie_setting(payload: CookieSettingUpdateRequest, request: Request) -> dict[str, Any]:
+    provider = payload.provider.strip().lower()
+    if not is_supported_cookie_provider(provider):
+        raise HTTPException(status_code=400, detail="Unsupported cookie provider")
+    _services(request)["repo"].set_setting(cookie_setting_key(provider), payload.value)
+    return {"ok": True, "provider": provider, "configured": True}
+
+
+@api_router.delete("/settings/cookies/{provider}")
+def delete_cookie_setting(provider: str, request: Request) -> dict[str, Any]:
+    provider_key = provider.strip().lower()
+    if not is_supported_cookie_provider(provider_key):
+        raise HTTPException(status_code=400, detail="Unsupported cookie provider")
+    _services(request)["repo"].clear_setting(cookie_setting_key(provider_key))
+    return {"ok": True, "provider": provider_key, "configured": False}
 
 
 @api_router.get("/queue")

@@ -382,6 +382,35 @@ def test_history_endpoint_includes_thumbnail_metadata(tmp_path):
         assert payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
 
 
+def test_queue_and_history_generate_youtube_thumbnail_when_missing(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        created = app.state.repository.enqueue_items(
+            [
+                NewQueueItem(
+                    source_url="https://www.youtube.com/watch?v=thumb123",
+                    normalized_url="https://www.youtube.com/watch?v=thumb123",
+                    source_type="video",
+                    title="Song",
+                    thumbnail_url=None,
+                )
+            ]
+        )
+        queue_resp = client.get("/api/queue")
+        assert queue_resp.status_code == 200
+        queue_payload = queue_resp.json()
+        assert queue_payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/thumb123/hqdefault.jpg"
+
+        item = app.state.repository.dequeue_next()
+        assert item is not None
+        app.state.repository.mark_playback_finished(created[0].id, QueueStatus.completed)
+
+        history_resp = client.get("/api/history")
+        assert history_resp.status_code == 200
+        history_payload = history_resp.json()
+        assert history_payload[0]["thumbnail_url"] == "https://i.ytimg.com/vi/thumb123/hqdefault.jpg"
+
+
 def test_play_now_endpoint_adds_video_and_returns_item_ids(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:
@@ -569,6 +598,55 @@ def test_binaries_updates_endpoint(tmp_path):
         payload = resp.json()
         assert "updates" in payload
         assert isinstance(payload["updates"], list)
+
+
+def test_cookie_settings_endpoints_persist_without_exposing_values(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        listing = client.get("/api/settings/cookies")
+        assert listing.status_code == 200
+        payload = listing.json()
+        providers = {entry["provider"]: entry for entry in payload["providers"]}
+        assert providers["youtube"]["configured"] is False
+        assert providers["soundcloud"]["configured"] is False
+        assert providers["mixcloud"]["configured"] is False
+
+        cookie_value = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tFALSE\t0\tSID\tabc123"
+        saved = client.put(
+            "/api/settings/cookies",
+            json={"provider": "youtube", "value": cookie_value},
+        )
+        assert saved.status_code == 200
+        assert saved.json()["configured"] is True
+        assert app.state.repository.get_setting("cookies:youtube") == cookie_value
+
+        reloaded = client.get("/api/settings/cookies")
+        assert reloaded.status_code == 200
+        reloaded_payload = reloaded.json()
+        reloaded_providers = {entry["provider"]: entry for entry in reloaded_payload["providers"]}
+        assert reloaded_providers["youtube"]["configured"] is True
+        assert "value" not in reloaded_providers["youtube"]
+        assert "abc123" not in reloaded.text
+
+        cleared = client.delete("/api/settings/cookies/youtube")
+        assert cleared.status_code == 200
+        assert cleared.json()["configured"] is False
+        assert app.state.repository.get_setting("cookies:youtube") is None
+
+
+def test_cookie_settings_rejects_unknown_provider(tmp_path):
+    client, _app = _build_test_client(tmp_path)
+    with client:
+        resp = client.put(
+            "/api/settings/cookies",
+            json={"provider": "vimeo", "value": "/tmp/cookies.txt"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Unsupported cookie provider"
+
+        delete_resp = client.delete("/api/settings/cookies/vimeo")
+        assert delete_resp.status_code == 400
+        assert delete_resp.json()["detail"] == "Unsupported cookie provider"
 
 
 def test_binaries_install_stop_stream_first_calls_skip(tmp_path):

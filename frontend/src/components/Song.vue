@@ -1,6 +1,5 @@
 <template>
   <div class="group flex min-w-0 items-center gap-3 rounded-md border px-3 py-2 playlist-card">
-    
     <div
       v-if="thumbnailSrc"
       class="relative h-14 w-24 shrink-0 overflow-hidden rounded surface-elevated"
@@ -20,7 +19,7 @@
         <UIcon name="i-bi-play-fill" class="size-8 text-white drop-shadow-md" />
       </div>
     </div>
-    
+
     <div class="min-w-0 flex-1">
       <p class="truncate text-sm font-medium">
         <template v-if="mode === 'queue' && item.queue_position != null">#{{ item.queue_position }} </template>
@@ -102,9 +101,8 @@ const { notifySuccess, notifyError } = useNotifications();
 const thumbnailSrc = computed(() => {
   const item = props.item;
   if (item?.thumbnail_url) return item.thumbnail_url;
-  if (item?.provider === "youtube" && item?.provider_item_id) {
-    return `https://i.ytimg.com/vi/${item.provider_item_id}/hqdefault.jpg`;
-  }
+  const providerItemId = typeof item?.provider_item_id === "string" ? item.provider_item_id.trim() : "";
+  if (providerItemId) return `https://i.ytimg.com/vi/${providerItemId}/hqdefault.jpg`;
   return "";
 });
 
@@ -113,13 +111,10 @@ const showSecondary = computed(
 );
 
 const providerLabel = computed(() => {
-  const item = props.item;
-  if (item?.provider) {
-    return item.provider.charAt(0).toUpperCase() + item.provider.slice(1);
-  }
+  const provider = props.item?.provider;
+  if (provider) return provider.charAt(0).toUpperCase() + provider.slice(1);
   return "";
 });
-
 
 async function addToQueue(url) {
   if (!url) return;
@@ -194,10 +189,6 @@ const dropdownItems = computed(() => {
         icon: "i-bi-play-fill",
         onSelect: () => playNow(url),
       },
-    );
-  }
-  if (hasUrl) {
-    items.push(
       {
         label: "Add to queue",
         icon: "i-bi-music-note-list",
@@ -222,8 +213,6 @@ const dropdownItems = computed(() => {
       },
     );
   }
-
- 
 
   if (props.playlistId && props.entryId != null) {
     items.push(
