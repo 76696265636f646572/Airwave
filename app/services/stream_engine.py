@@ -409,7 +409,7 @@ class StreamEngine:
             cached = self._get_cached_resolved_track(queue_item.id)
             if cached is not None:
                 return cached
-        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url)
+        resolved = self.yt_dlp_service.resolve_video(queue_item.source_url, force_refresh=force_refresh)
         self._cache_resolved_track(queue_item.id, resolved)
         return resolved
 

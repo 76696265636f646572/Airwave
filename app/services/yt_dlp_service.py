@@ -175,10 +175,11 @@ class YtDlpService:
         cookie_file = self._cookie_file_for_url(url)
         return self.client.spawn_audio_stream(url, cookie_file=cookie_file)
 
-    def resolve_video(self, url: str) -> ResolvedTrack:
-        cached = self._get_cached_resolved_track(url)
-        if cached is not None:
-            return cached
+    def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
+        if not force_refresh:
+            cached = self._get_cached_resolved_track(url)
+            if cached is not None:
+                return cached
         dispatch = self.dispatcher.dispatch(url)
         if dispatch.is_playlist:
             raise YtDlpError("Expected a single item URL, got playlist URL")

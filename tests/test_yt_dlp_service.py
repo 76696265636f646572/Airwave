@@ -215,3 +215,18 @@ def test_preview_playlist_reuses_cached_result_for_equivalent_youtube_urls(servi
 
     assert first.entries == second.entries
     assert capture_client.playlist_calls == [("https://www.youtube.com/playlist?list=PL222&feature=shared", None)]
+
+
+def test_resolve_video_force_refresh_bypasses_cached_stream_url(service):
+    capture_client = _CaptureClient()
+    service.client = capture_client
+
+    first = service.resolve_video("https://www.youtube.com/watch?v=abc")
+    second = service.resolve_video("https://www.youtube.com/watch?v=abc")
+    refreshed = service.resolve_video("https://www.youtube.com/watch?v=abc", force_refresh=True)
+
+    assert first.stream_url == "https://stream.example/audio.mp3"
+    assert second is first
+    assert refreshed is not first
+    assert len(capture_client.single_calls) == 2
+    assert len(capture_client.stream_calls) == 2
