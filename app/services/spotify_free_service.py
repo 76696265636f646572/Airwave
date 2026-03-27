@@ -218,11 +218,14 @@ def fetch_spotify_playlist_tracks(playlist_id: str) -> tuple[dict[str, Any], lis
     thumb = _playlist_cover_url(meta)
 
     rows: list[dict[str, Any]] = []
+    playlist_items_error: Exception | None = None
+    page: dict[str, Any] | None = None
     try:
         page = sp.playlist_items(playlist_id, limit=-1, offset=0)
-    except Exception:
+    except Exception as exc:
+        playlist_items_error = exc
         logger.exception("SpotipyFree playlist_items failed playlist_id=%s", playlist_id)
-        raise
+        page = None
 
     if isinstance(page, dict):
         items = page.get("items")
@@ -250,6 +253,9 @@ def fetch_spotify_playlist_tracks(playlist_id: str) -> tuple[dict[str, Any], lis
             rows = embedded
         else:
             logger.warning("No tracks parsed from playlist_items or content.items playlist_id=%s", playlist_id)
+            if playlist_items_error is not None:
+                raise playlist_items_error
+            raise ValueError("No tracks parsed from playlist_items or content.items")
 
     logger.info(
         "Spotify playlist loaded playlist_id=%s title=%r track_count=%s",
