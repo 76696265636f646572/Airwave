@@ -12,6 +12,7 @@ from app.services.binaries_service import (
     _is_managed_path,
     _parse_deno_version,
     _parse_ffmpeg_version,
+    _parse_spotdl_version,
     _parse_yt_dlp_version,
 )
 
@@ -39,6 +40,12 @@ def test_parse_deno_version():
     assert _parse_deno_version("deno 1.42.0 (canary, x86_64-unknown-linux-gnu)") == "1.42.0"
 
 
+def test_parse_spotdl_version():
+    assert _parse_spotdl_version("spotdl 4.4.3") == "4.4.3"
+    assert _parse_spotdl_version("spotDL version 4.4.3") == "4.4.3"
+    assert _parse_spotdl_version("") == ""
+
+
 def test_is_managed_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     bin_dir = tmp_path / "bin"
@@ -61,6 +68,7 @@ def test_get_binaries_uses_echo_for_version(tmp_path, monkeypatch):
         ("yt-dlp", "--version", "2026.03.03"),
         ("ffmpeg", "-version", "ffmpeg version 6.1.1 Copyright"),
         ("deno", "--version", "deno 2.0.0"),
+        ("spotdl", "--version", "spotdl 4.4.3"),
     ]:
         script = bin_dir / name
         script.write_text(
@@ -74,9 +82,10 @@ def test_get_binaries_uses_echo_for_version(tmp_path, monkeypatch):
         yt_dlp_path=str(bin_dir / "yt-dlp"),
         ffmpeg_path=str(bin_dir / "ffmpeg"),
         deno_path=str(bin_dir / "deno"),
+        spotdl_path=str(bin_dir / "spotdl"),
     )
     binaries = svc.get_binaries()
-    assert len(binaries) == 3
+    assert len(binaries) == 4
     by_name = {b.name: b for b in binaries}
     assert by_name["yt-dlp"].version == "2026.03.03"
     assert by_name["yt-dlp"].is_system is False
@@ -84,6 +93,8 @@ def test_get_binaries_uses_echo_for_version(tmp_path, monkeypatch):
     assert by_name["ffmpeg"].is_system is False
     assert by_name["deno"].version == "2.0.0"
     assert by_name["deno"].is_system is False
+    assert by_name["spotdl"].version == "4.4.3"
+    assert by_name["spotdl"].is_system is False
 
 
 def test_get_binaries_detects_system_ffmpeg(monkeypatch):
@@ -100,7 +111,12 @@ def test_get_binaries_detects_system_ffmpeg(monkeypatch):
         return None
 
     monkeypatch.setattr(mod, "_run_version", fake_run_version)
-    svc = BinariesService(yt_dlp_path="/nonexistent/yt-dlp", ffmpeg_path="ffmpeg", deno_path="/nonexistent/deno")
+    svc = BinariesService(
+        yt_dlp_path="/nonexistent/yt-dlp",
+        ffmpeg_path="ffmpeg",
+        deno_path="/nonexistent/deno",
+        spotdl_path="/nonexistent/spotdl",
+    )
     binaries = svc.get_binaries()
     ffmpeg = next(b for b in binaries if b.name == "ffmpeg")
     assert ffmpeg.path == "/usr/bin/ffmpeg"
@@ -112,6 +128,7 @@ def test_install_raises_for_unknown_binary():
         yt_dlp_path="/bin/echo",
         ffmpeg_path="/bin/echo",
         deno_path="/bin/echo",
+        spotdl_path="/bin/echo",
     )
     with pytest.raises(ValueError, match="Unknown binary"):
         svc.install("unknown")
@@ -123,7 +140,7 @@ def test_install_raises_for_system_ffmpeg(monkeypatch):
         "app.services.binaries_service.shutil.which",
         lambda x: "/usr/bin/ffmpeg" if x == "ffmpeg" else None,
     )
-    svc = BinariesService(yt_dlp_path="/bin/echo", ffmpeg_path="ffmpeg", deno_path="/bin/echo")
+    svc = BinariesService(yt_dlp_path="/bin/echo", ffmpeg_path="ffmpeg", deno_path="/bin/echo", spotdl_path="/bin/echo")
     with pytest.raises(RuntimeError, match="Cannot update system-installed ffmpeg"):
         svc.install("ffmpeg")
 
@@ -136,6 +153,7 @@ def test_get_updates_mocked_github(tmp_path, monkeypatch):
         ("yt-dlp", "2026.01.01"),
         ("ffmpeg", "ffmpeg version 6.0 Copyright"),
         ("deno", "deno 1.40.0"),
+        ("spotdl", "spotdl 4.1.0"),
     ]:
         s = bin_dir / name
         s.write_text(f"#!/bin/sh\necho '{out}'\n", encoding="utf-8")
@@ -145,14 +163,21 @@ def test_get_updates_mocked_github(tmp_path, monkeypatch):
         yt_dlp_path=str(bin_dir / "yt-dlp"),
         ffmpeg_path=str(bin_dir / "ffmpeg"),
         deno_path=str(bin_dir / "deno"),
+        spotdl_path=str(bin_dir / "spotdl"),
     )
     with patch.object(svc, "_latest_yt_dlp", return_value="2026.03.03"):
         with patch.object(svc, "_latest_ffmpeg", return_value="2026-03-09"):
             with patch.object(svc, "_latest_deno", return_value="2.0.0"):
-                updates = svc.get_updates()
+                with patch.object(svc, "_latest_spotdl", return_value="4.4.3"):
+                    updates = svc.get_updates()
     assert len(updates) >= 2
     yt = next((u for u in updates if u.name == "yt-dlp"), None)
     assert yt is not None
     assert yt.current == "2026.01.01"
     assert yt.latest == "2026.03.03"
     assert yt.has_update is True
+    spotdl = next((u for u in updates if u.name == "spotdl"), None)
+    assert spotdl is not None
+    assert spotdl.current == "4.1.0"
+    assert spotdl.latest == "4.4.3"
+    assert spotdl.has_update is True

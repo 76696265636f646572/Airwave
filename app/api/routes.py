@@ -119,7 +119,7 @@ class SeekRequest(BaseModel):
 
 
 class InstallBinaryRequest(BaseModel):
-    name: str = Field(pattern="^(yt-dlp|ffmpeg|deno)$")
+    name: str = Field(pattern="^(yt-dlp|ffmpeg|deno|spotdl)$")
     stop_stream_first: bool = False
 
 

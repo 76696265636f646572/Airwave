@@ -86,6 +86,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         yt_dlp_path=settings.yt_dlp_path,
         ffmpeg_path=settings.ffmpeg_path,
         deno_path=settings.deno_path,
+        spotdl_path=settings.spotdl_path,
     )
 
     @asynccontextmanager

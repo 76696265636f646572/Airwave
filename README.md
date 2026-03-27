@@ -15,11 +15,13 @@ A WSL-friendly FastAPI application that exposes one shared live MP3 stream for a
    - `npm run build`
 4. Install `yt-dlp` binary:
    - `./scripts/setup_yt_dlp.sh`
-5. Install `deno` (JS runtime for yt-dlp provider extraction support):
+5. Install `spotdl` binary:
+   - `./scripts/setup_spotdl.sh`
+6. Install `deno` (JS runtime for yt-dlp provider extraction support):
    - `./scripts/setup_deno.sh`
-6. (Optional) install `ffmpeg` manually:
+7. (Optional) install `ffmpeg` manually:
    - `./scripts/setup_ffmpeg.sh`
-7. Start the app:
+8. Start the app:
    - `./scripts/run_dev.sh`
 
 Open `http://127.0.0.1:8000`.
@@ -46,6 +48,7 @@ AIRWAVE_PORT=8000
 AIRWAVE_PUBLIC_BASE_URL=http://192.168.1.50:8000
 AIRWAVE_FFMPEG_PATH=./bin/ffmpeg
 AIRWAVE_YT_DLP_PATH=./bin/yt-dlp
+AIRWAVE_SPOTDL_PATH=./bin/spotdl
 AIRWAVE_DENO_PATH=./bin/deno
 AIRWAVE_LOG_LEVEL=info 
 ```
@@ -64,6 +67,7 @@ debug, info, warning, error
 | `AIRWAVE_PUBLIC_BASE_URL` | `http://127.0.0.1:8000` | Base URL used to build the public stream URL exposed to browsers and Sonos devices. |
 | `AIRWAVE_STREAM_PATH` | `/stream/live.mp3` | Path appended to the public base URL for the shared MP3 stream endpoint. |
 | `AIRWAVE_YT_DLP_PATH` | `./bin/yt-dlp` | Path to the `yt-dlp` binary used for provider metadata extraction, URL resolution, and search. Also used by `scripts/setup_yt_dlp.sh` as its install target. |
+| `AIRWAVE_SPOTDL_PATH` | `./bin/spotdl` | Path to the `spotdl` binary used for Spotify playlist import metadata. Also used by `scripts/setup_spotdl.sh` as its install target. |
 | `AIRWAVE_FFMPEG_PATH` | `ffmpeg` | Path or executable name for `ffmpeg`. Also used by `scripts/setup_ffmpeg.sh` as its install target. |
 | `AIRWAVE_DENO_PATH` | `./bin/deno` | Path to the `deno` binary (JS runtime used by yt-dlp extractors). Also used by `scripts/setup_deno.sh` as its install target. |
 | `AIRWAVE_MP3_BITRATE` | `128k` | MP3 bitrate passed into the ffmpeg transcoding pipeline. |
@@ -77,7 +81,7 @@ debug, info, warning, error
 1. `AIRWAVE_PUBLIC_BASE_URL` is the variable used to build the public stream URL for browsers and Sonos; set it to your host or IP (e.g. `http://192.168.1.50:8000`) when clients outside the local browser need to reach the stream.
 2. If `AIRWAVE_PUBLIC_BASE_URL` points at `localhost`, `0.0.0.0`, `host.docker.internal`, or a loopback IP, the app tries to detect a LAN IP automatically. Domain names (e.g. `airwave.local.example.com`) are used as-is.
 3. `AIRWAVE_FFMPEG_PATH` can be either a binary name on `PATH` or an explicit file path such as `./bin/ffmpeg`.
-4. `AIRWAVE_YT_DLP_PATH`, `AIRWAVE_FFMPEG_PATH`, and `AIRWAVE_DENO_PATH` are used both by the app and by the install helper scripts.
+4. `AIRWAVE_YT_DLP_PATH`, `AIRWAVE_SPOTDL_PATH`, `AIRWAVE_FFMPEG_PATH`, and `AIRWAVE_DENO_PATH` are used both by the app and by the install helper scripts.
 
 ## Running Tests
 
@@ -173,6 +177,7 @@ airwave/   (repo root; formerly mytube)
 ├── scripts/
 │   ├── run_dev.sh                 # Dev launcher: activates venv, builds frontend if needed, starts uvicorn
 │   ├── setup_ffmpeg.sh            # Optional ffmpeg installation helper
+│   ├── setup_spotdl.sh            # spotdl installation helper
 │   └── setup_yt_dlp.sh            # yt-dlp installation helper
 ├── tests/                         # Python unit/integration coverage for API, services, config, DB
 ├── tests_e2e/                     # Browser smoke test(s)

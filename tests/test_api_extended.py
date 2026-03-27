@@ -697,6 +697,15 @@ def test_binaries_install_rejects_invalid_name(tmp_path):
         assert resp.status_code == 422
 
 
+def test_binaries_install_accepts_spotdl(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        with patch.object(app.state.binaries_service, "install") as mock_install:
+            resp = client.post("/api/binaries/install", json={"name": "spotdl"})
+            assert resp.status_code == 200
+            mock_install.assert_called_once_with("spotdl")
+
+
 def test_sonos_endpoints(tmp_path):
     client, app = _build_test_client(tmp_path)
     with client:

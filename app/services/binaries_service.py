@@ -1,4 +1,4 @@
-"""Service for checking and installing yt-dlp, ffmpeg, and deno binaries."""
+"""Service for checking and installing yt-dlp, ffmpeg, deno, and spotdl binaries."""
 
 from __future__ import annotations
 
@@ -25,12 +25,19 @@ logger = logging.getLogger(__name__)
 YT_DLP_RELEASES_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases"
 FFMPEG_RELEASES_URL = "https://api.github.com/repos/yt-dlp/FFmpeg-Builds/releases"
 DENO_RELEASES_URL = "https://api.github.com/repos/denoland/deno/releases"
+SPOTDL_RELEASES_URL = "https://api.github.com/repos/spotDL/spotify-downloader/releases"
 
 # Default User-Agent to avoid GitHub rate limiting
 GITHUB_UA = "Airwave/1.0 (https://github.com/airwave)"
 
 
 def _request_json(url: str) -> list[dict[str, Any]]:
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": GITHUB_UA})
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - trusted GitHub URL
+        return json.loads(resp.read().decode())
+
+
+def _request_release(url: str) -> dict[str, Any]:
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": GITHUB_UA})
     with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - trusted GitHub URL
         return json.loads(resp.read().decode())
@@ -89,6 +96,11 @@ def _parse_deno_version(out: str) -> str:
     return match.group(1) if match else (out.splitlines()[0].strip() if out else "")
 
 
+def _parse_spotdl_version(out: str) -> str:
+    match = re.search(r"spotdl[^\d]*(\d+\.\d+\.\d+)", out or "", re.IGNORECASE)
+    return match.group(1) if match else (out.splitlines()[0].strip() if out else "")
+
+
 def _yt_dlp_asset_name() -> str | None:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -139,6 +151,15 @@ def _ffmpeg_asset_name() -> str | None:
     return None
 
 
+def _spotdl_asset_suffix() -> str | None:
+    system = platform.system().lower()
+    if system == "linux":
+        return "-linux"
+    if system == "darwin":
+        return "-darwin"
+    return None
+
+
 @dataclass
 class BinaryStatus:
     name: str
@@ -156,17 +177,19 @@ class UpdateInfo:
 
 
 class BinariesService:
-    """Service for inspecting and updating yt-dlp, ffmpeg, and deno binaries."""
+    """Service for inspecting and updating yt-dlp, ffmpeg, deno, and spotdl binaries."""
 
     def __init__(
         self,
         yt_dlp_path: str,
         ffmpeg_path: str,
         deno_path: str,
+        spotdl_path: str,
     ) -> None:
         self._yt_dlp_configured = yt_dlp_path
         self._ffmpeg_configured = ffmpeg_path
         self._deno_configured = deno_path
+        self._spotdl_configured = spotdl_path
 
     def get_binaries(self) -> list[BinaryStatus]:
         result: list[BinaryStatus] = []
@@ -174,6 +197,7 @@ class BinariesService:
             ("yt-dlp", self._yt_dlp_configured, self._resolve_yt_dlp, _parse_yt_dlp_version, "--version"),
             ("ffmpeg", self._ffmpeg_configured, self._resolve_ffmpeg, _parse_ffmpeg_version, "-version"),
             ("deno", self._deno_configured, self._resolve_deno, _parse_deno_version, "--version"),
+            ("spotdl", self._spotdl_configured, self._resolve_spotdl, _parse_spotdl_version, "--version"),
         ]:
             path = resolve_fn()
             is_system = not _is_managed_path(path)
@@ -201,6 +225,9 @@ class BinariesService:
     def _resolve_deno(self) -> str:
         return _resolve_path(self._deno_configured)
 
+    def _resolve_spotdl(self) -> str:
+        return _resolve_path(self._spotdl_configured)
+
     def _get_installed_path(self, name: str) -> str:
         if name == "yt-dlp":
             return self._resolve_yt_dlp()
@@ -208,6 +235,8 @@ class BinariesService:
             return self._resolve_ffmpeg()
         if name == "deno":
             return self._resolve_deno()
+        if name == "spotdl":
+            return self._resolve_spotdl()
         return ""
 
     def get_updates(self) -> list[UpdateInfo]:
@@ -253,6 +282,16 @@ class BinariesService:
             )
             result.append(UpdateInfo(name="deno", current=cur_v or "—", latest=latest_deno, has_update=has))
 
+        # spotdl
+        cur = binaries.get("spotdl")
+        latest_spotdl = self._latest_spotdl()
+        if latest_spotdl:
+            cur_v = (cur.version if cur else "") or ""
+            has = (not cur_v and not (cur and cur.is_system)) or (
+                cur_v and not cur.is_system and self._semver_newer(latest_spotdl, cur_v)
+            )
+            result.append(UpdateInfo(name="spotdl", current=cur_v or "—", latest=latest_spotdl, has_update=has))
+
         return result
 
     def _latest_yt_dlp(self) -> str | None:
@@ -295,6 +334,19 @@ class BinariesService:
             logger.warning("Failed to fetch deno releases: %s", e)
         return None
 
+    def _latest_spotdl(self) -> str | None:
+        try:
+            releases = _request_json(f"{SPOTDL_RELEASES_URL}?per_page=5")
+            for r in releases:
+                if r.get("prerelease"):
+                    continue
+                tag = r.get("tag_name") or ""
+                if tag.startswith("v") and re.match(r"^v\d+\.\d+\.\d+", tag):
+                    return tag.lstrip("v")
+        except Exception as e:
+            logger.warning("Failed to fetch spotdl releases: %s", e)
+        return None
+
     def _yt_dlp_newer(self, latest: str, current: str) -> bool:
         try:
             l = [int(x) for x in latest.split(".")]
@@ -311,6 +363,9 @@ class BinariesService:
         return False
 
     def _deno_newer(self, latest: str, current: str) -> bool:
+        return self._semver_newer(latest, current)
+
+    def _semver_newer(self, latest: str, current: str) -> bool:
         def parse(s: str) -> list[int]:
             return [int(x) for x in re.findall(r"\d+", s)[:3]]
 
@@ -335,6 +390,8 @@ class BinariesService:
             self._install_ffmpeg()
         elif name == "deno":
             self._install_deno()
+        elif name == "spotdl":
+            self._install_spotdl()
         else:
             raise ValueError(f"Unknown binary: {name}")
 
@@ -397,6 +454,25 @@ class BinariesService:
             raise RuntimeError("Cannot update system-installed ffmpeg")
         url = f"https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/{asset}"
         _download_and_extract_ffmpeg(url, target)
+
+    def _install_spotdl(self) -> None:
+        asset_suffix = _spotdl_asset_suffix()
+        if not asset_suffix:
+            raise RuntimeError(f"Unsupported platform: {platform.system()} / {platform.machine()}")
+        target = _resolve_path(self._spotdl_configured)
+        if not _is_managed_path(target):
+            raise RuntimeError("Cannot update system-installed spotdl")
+        release = _request_release(f"{SPOTDL_RELEASES_URL}/latest")
+        assets = release.get("assets") or []
+        asset_url = ""
+        for asset in assets:
+            name = str(asset.get("name") or "")
+            if name.lower().endswith(asset_suffix):
+                asset_url = str(asset.get("browser_download_url") or "")
+                break
+        if not asset_url:
+            raise RuntimeError(f"No spotdl asset found for {platform.system()}")
+        _download_file(asset_url, target)
 
 def _download_file(url: str, dest: str) -> None:
     dest_path = Path(dest).expanduser().resolve()

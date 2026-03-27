@@ -44,6 +44,9 @@ RUN mkdir -p /build/bin \
     && curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${ASSET}" -o /build/bin/yt-dlp \
     && chmod +x /build/bin/yt-dlp
 
+# Download and install spotdl
+RUN AIRWAVE_SPOTDL_PATH=/build/bin/spotdl bash ./scripts/setup_spotdl.sh
+
 # Download and install Deno (JS runtime for yt-dlp EJS)
 RUN ARCH=$(uname -m) \
     && case "$ARCH" in \
@@ -102,6 +105,7 @@ COPY --chown=airwave:airwave --from=builder /build/app/static/dist ./app/static/
 
 # Copy binaries from builder
 COPY --chown=airwave:airwave --from=builder /build/bin/yt-dlp ./bin/yt-dlp
+COPY --chown=airwave:airwave --from=builder /build/bin/spotdl ./bin/spotdl
 COPY --chown=airwave:airwave --from=builder /build/bin/deno ./bin/deno
 COPY --chown=airwave:airwave --from=builder /build/bin/ffmpeg ./bin/ffmpeg
 
@@ -109,6 +113,7 @@ COPY --chown=airwave:airwave --from=builder /build/bin/ffmpeg ./bin/ffmpeg
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     AIRWAVE_YT_DLP_PATH=/app/bin/yt-dlp \
+    AIRWAVE_SPOTDL_PATH=/app/bin/spotdl \
     AIRWAVE_FFMPEG_PATH=/app/bin/ffmpeg \
     PATH="/app/bin:${PATH}"
 
