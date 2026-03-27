@@ -14,47 +14,126 @@
       </UButton>
     </form>
 
-    <ul
-      class="mt-3 min-h-0 flex-1 space-y-2 overflow-auto pr-1"
+    <div
+      class="mt-3 min-h-0 flex-1 overflow-auto pr-1"
       @click="(e) => e.target === e.currentTarget && selectPlaylist(router, null)"
     >
-      <li
-        v-for="playlist in playlists"
-        :key="playlist.id"
-        class="group flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors playlist-card"
-        :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
-        @click="onPlaylistClick(playlist)"
+      <VueDraggable
+        v-if="pinnedPlaylists.length"
+        v-model="pinnedPlaylists"
+        tag="ul"
+        class="space-y-2"
+        :animation="150"
+        :delay="200"
+        :delay-on-touch-only="true"
+        ghost-class="queue-drag-ghost"
+        chosen-class="queue-drag-chosen"
+        @end="(evt) => onReorderEnd(evt, true)"
       >
-        <div
-          class="min-w-0 flex-1 flex items-center gap-2 rounded py-1.5 -m-1"
-          :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'text-primary-400' : ''"
+        <li
+          v-for="playlist in pinnedPlaylists"
+          :key="playlist.id"
+          class="group flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors playlist-card"
+          :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
+          @click="onPlaylistClick(playlist)"
         >
-          <img
-            v-if="playlistThumbnailSrc(playlist)"
-            :src="playlistThumbnailSrc(playlist)"
-            alt=""
-            class="h-10 w-10 shrink-0 rounded object-cover"
-          />
-          <div class="min-w-0 text-left">
-            <span class="block truncate text-sm font-medium">{{ playlist.title }}</span>
-            <span class="block text-xs text-muted">{{ playlistLabel(playlist) }} · {{ playlist.entry_count }}</span>
-          </div>
-        </div>
-        <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
-          <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
-            <UButton
-              type="button"
-              icon="i-bi-three-dots"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              aria-label="More actions"
-              class="cursor-pointer"
+          <div
+            class="min-w-0 flex-1 flex items-center gap-2 rounded py-1.5 -m-1"
+            :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'text-primary-400' : ''"
+          >
+            <img
+              v-if="playlistThumbnailSrc(playlist)"
+              :src="playlistThumbnailSrc(playlist)"
+              alt=""
+              class="h-10 w-10 shrink-0 rounded object-cover"
             />
-          </UDropdownMenu>
-        </div>
-      </li>
-    </ul>
+            <div class="min-w-0 text-left">
+              <span class="flex items-center gap-1 text-sm font-medium">
+                <span class="truncate">{{ playlist.title }}</span>
+                <UIcon
+                  v-if="playlist.pinned"
+                  name="i-bi-pin-fill"
+                  class="size-3 shrink-0 text-muted"
+                  aria-hidden="true"
+                />
+              </span>
+              <span class="block text-xs text-muted">{{ playlistLabel(playlist) }} · {{ playlist.entry_count }}</span>
+            </div>
+          </div>
+          <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
+            <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
+              <UButton
+                type="button"
+                icon="i-bi-three-dots"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                aria-label="More actions"
+                class="cursor-pointer"
+              />
+            </UDropdownMenu>
+          </div>
+        </li>
+      </VueDraggable>
+
+      <VueDraggable
+        v-if="unpinnedPlaylists.length"
+        v-model="unpinnedPlaylists"
+        tag="ul"
+        :class="pinnedPlaylists.length ? 'mt-2 space-y-2' : 'space-y-2'"
+        :animation="150"
+        :delay="200"
+        :delay-on-touch-only="true"
+        ghost-class="queue-drag-ghost"
+        chosen-class="queue-drag-chosen"
+        @end="(evt) => onReorderEnd(evt, false)"
+      >
+        <li
+          v-for="playlist in unpinnedPlaylists"
+          :key="playlist.id"
+          class="group flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors playlist-card"
+          :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
+          @click="onPlaylistClick(playlist)"
+        >
+          <div
+            class="min-w-0 flex-1 flex items-center gap-2 rounded py-1.5 -m-1"
+            :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'text-primary-400' : ''"
+          >
+            <img
+              v-if="playlistThumbnailSrc(playlist)"
+              :src="playlistThumbnailSrc(playlist)"
+              alt=""
+              class="h-10 w-10 shrink-0 rounded object-cover"
+            />
+            <div class="min-w-0 text-left">
+              <span class="flex items-center gap-1 text-sm font-medium">
+                <span class="truncate">{{ playlist.title }}</span>
+                <UIcon
+                  v-if="playlist.pinned"
+                  name="i-bi-pin-fill"
+                  class="size-3 shrink-0 text-muted"
+                  aria-hidden="true"
+                />
+              </span>
+              <span class="block text-xs text-muted">{{ playlistLabel(playlist) }} · {{ playlist.entry_count }}</span>
+            </div>
+          </div>
+          <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
+            <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
+              <UButton
+                type="button"
+                icon="i-bi-three-dots"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                aria-label="More actions"
+                class="cursor-pointer"
+              />
+            </UDropdownMenu>
+          </div>
+        </li>
+      </VueDraggable>
+    </div>
 
     <UModal v-model:open="editModalOpen" :ui="{ width: 'max-w-sm' }">
       <template #content>
@@ -115,6 +194,7 @@
 <script setup>
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { VueDraggable } from "vue-draggable-plus";
 
 import { useLibraryState } from "../composables/useLibraryState";
 import { useUiState } from "../composables/useUiState";
@@ -136,8 +216,11 @@ const {
   updatePlaylist,
   setPlaylistPinned,
   deletePlaylist,
+  reorderSidebarPlaylist,
 } = useLibraryState();
 const { activePlaylistId, selectPlaylist } = useUiState();
+const pinnedPlaylists = ref([]);
+const unpinnedPlaylists = ref([]);
 
 function isRemotePlaylist(playlist) {
   return playlist?.kind === "remote_youtube";
@@ -165,6 +248,16 @@ watch(playlistToEdit, (p) => {
   editTitle.value = p ? (p.title || "") : "";
   editDescription.value = p ? (p.description || "") : "";
 });
+
+watch(
+  playlists,
+  (items) => {
+    const next = Array.isArray(items) ? items : [];
+    pinnedPlaylists.value = next.filter((playlist) => !!playlist?.pinned);
+    unpinnedPlaylists.value = next.filter((playlist) => !playlist?.pinned);
+  },
+  { immediate: true },
+);
 
 function dropdownItemsFor(playlist) {
   if (isRemotePlaylist(playlist)) {
@@ -250,6 +343,15 @@ function submitCreatePlaylist() {
   if (!title) return;
   createPlaylist(title);
   newTitle.value = "";
+}
+
+async function onReorderEnd(evt, pinned) {
+  const { oldIndex, newIndex } = evt;
+  if (oldIndex === newIndex) return;
+  const list = pinned ? pinnedPlaylists.value : unpinnedPlaylists.value;
+  const playlist = list[newIndex];
+  if (!playlist?.id) return;
+  await reorderSidebarPlaylist(playlist.id, newIndex, pinned);
 }
 
 function playlistThumbnailSrc(playlist) {
