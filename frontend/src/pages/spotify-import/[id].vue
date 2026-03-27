@@ -24,7 +24,7 @@
     <div v-else class="min-h-0 flex-1 flex flex-col md:flex-row overflow-hidden">
       <UScrollArea class="md:w-72 shrink-0 border-b md:border-b-0 md:border-r border-neutral-700 min-h-[160px] md:min-h-0 max-h-[40vh] md:max-h-none">
         <ul class="p-2 space-y-1">
-          <li v-if="items.length === 0">c
+          <li v-if="items.length === 0">
             <p class="text-sm text-muted">Loading tracks...</p>
           </li>
           <li v-for="item in items" :key="item.id">
