@@ -90,8 +90,9 @@
             :active-playlist-id="activePlaylistId"
             :is-remote-playlist="isRemotePlaylist"
             :thumbnail-src="playlist.thumbnail_url"
-            :label="playlist.title"
+            :label="playlistLabel(playlist)"
             @click="openPlaylist(playlist)"
+            @clear-active-playlist="clearActivePlaylist"
           />
         </ul>
         <div v-else class="py-6 text-center text-sm text-muted">
@@ -181,6 +182,7 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 
+import PlaylistItem from "../components/PlaylistItem.vue";
 import Song from "../components/Song.vue";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
@@ -277,12 +279,25 @@ function goToHistory() {
   }
 }
 
+function isRemotePlaylist(playlist) {
+  return playlist?.kind === "remote_youtube";
+}
+
+function playlistLabel(playlist) {
+  if (playlist?.kind === "remote_youtube") return "youtube";
+  return playlist?.kind || "playlist";
+}
+
 function openPlaylist(playlist) {
-  if (playlist?.kind === "remote_youtube") {
+  if (isRemotePlaylist(playlist)) {
     importPlaylistUrl(playlist.source_url);
     return;
   }
   selectPlaylist(router, playlist?.id);
+}
+
+function clearActivePlaylist() {
+  selectPlaylist(router, null);
 }
 
 function openSonos() {

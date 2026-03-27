@@ -106,13 +106,11 @@
 
 <script setup>
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
 
 import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
 import { fetchJson } from "../composables/useApi";
 import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaylistSelector } from "../composables/usePlaylistSelector";
-import { useUiState } from "../composables/useUiState";
 
 const props = defineProps({
   playlist: {
@@ -137,11 +135,9 @@ const props = defineProps({
   },
 });
 
-defineEmits(["click"]);
+const emit = defineEmits(["click", "clear-active-playlist"]);
 
-const router = useRouter();
 const { playlists, importPlaylistUrl, queuePlaylist, playPlaylistNow, addEntriesToPlaylist, updatePlaylist, setPlaylistPinned, deletePlaylist } = useLibraryState();
-const { activePlaylistId, selectPlaylist } = useUiState();
 const playlistSelector = usePlaylistSelector(() => playlists.value);
 const editModalOpen = ref(false);
 const editTitle = ref("");
@@ -252,11 +248,11 @@ async function submitEdit() {
 
 async function submitDelete() {
   if (!props.playlist?.id) return;
-  const wasSelected = activePlaylistId.value === props.playlist.id;
+  const wasSelected = props.playlist.id === props.activePlaylistId;
   deleteModalOpen.value = false;
   await deletePlaylist(props.playlist.id);
   if (wasSelected) {
-    selectPlaylist(router, null);
+    emit("clear-active-playlist");
   }
 }
 

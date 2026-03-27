@@ -39,6 +39,7 @@
           :thumbnail-src="playlistThumbnailSrc(playlist)"
           :label="playlistLabel(playlist)"
           @click="onPlaylistClick"
+          @clear-active-playlist="clearActivePlaylist"
         />
       </VueDraggable>
 
@@ -63,6 +64,7 @@
           :thumbnail-src="playlistThumbnailSrc(playlist)"
           :label="playlistLabel(playlist)"
           @click="onPlaylistClick"
+          @clear-active-playlist="clearActivePlaylist"
         />
       </VueDraggable>
     </div>
@@ -106,6 +108,10 @@ function onPlaylistClick(playlist) {
   } else {
     selectPlaylist(router, playlistId);
   }
+}
+
+function clearActivePlaylist() {
+  selectPlaylist(router, null);
 }
 
 function playlistLabel(playlist) {
