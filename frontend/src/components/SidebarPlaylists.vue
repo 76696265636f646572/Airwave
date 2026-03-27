@@ -30,50 +30,17 @@
         chosen-class="queue-drag-chosen"
         @end="(evt) => onReorderEnd(evt, true)"
       >
-        <li
+        <PlaylistItem
           v-for="playlist in pinnedPlaylists"
           :key="playlist.id"
-          class="group flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors playlist-card"
-          :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
-          @click="onPlaylistClick(playlist)"
-        >
-          <div
-            class="min-w-0 flex-1 flex items-center gap-2 rounded py-1.5 -m-1"
-            :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'text-primary-400' : ''"
-          >
-            <img
-              v-if="playlistThumbnailSrc(playlist)"
-              :src="playlistThumbnailSrc(playlist)"
-              alt=""
-              class="h-10 w-10 shrink-0 rounded object-cover"
-            />
-            <div class="min-w-0 text-left">
-              <span class="flex items-center gap-1 text-sm font-medium">
-                <span class="truncate">{{ playlist.title }}</span>
-                <UIcon
-                  v-if="playlist.pinned"
-                  name="i-bi-pin-fill"
-                  class="size-3 shrink-0 text-muted"
-                  aria-hidden="true"
-                />
-              </span>
-              <span class="block text-xs text-muted">{{ playlistLabel(playlist) }} · {{ playlist.entry_count }}</span>
-            </div>
-          </div>
-          <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
-            <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
-              <UButton
-                type="button"
-                icon="i-bi-three-dots"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                aria-label="More actions"
-                class="cursor-pointer"
-              />
-            </UDropdownMenu>
-          </div>
-        </li>
+          :playlist="playlist"
+          :active-playlist-id="activePlaylistId"
+          :is-remote-playlist="isRemotePlaylist"
+          :thumbnail-src="playlistThumbnailSrc(playlist)"
+          :label="playlistLabel(playlist)"
+          :dropdown-items="dropdownItemsFor(playlist)"
+          @click="onPlaylistClick"
+        />
       </VueDraggable>
 
       <VueDraggable
@@ -88,50 +55,17 @@
         chosen-class="queue-drag-chosen"
         @end="(evt) => onReorderEnd(evt, false)"
       >
-        <li
+        <PlaylistItem
           v-for="playlist in unpinnedPlaylists"
           :key="playlist.id"
-          class="group flex items-start gap-2 rounded-md border p-2 cursor-pointer transition-colors playlist-card"
-          :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'bg-primary-500/20' : 'hover:bg-neutral-700/50'"
-          @click="onPlaylistClick(playlist)"
-        >
-          <div
-            class="min-w-0 flex-1 flex items-center gap-2 rounded py-1.5 -m-1"
-            :class="playlist.id === activePlaylistId && !isRemotePlaylist(playlist) ? 'text-primary-400' : ''"
-          >
-            <img
-              v-if="playlistThumbnailSrc(playlist)"
-              :src="playlistThumbnailSrc(playlist)"
-              alt=""
-              class="h-10 w-10 shrink-0 rounded object-cover"
-            />
-            <div class="min-w-0 text-left">
-              <span class="flex items-center gap-1 text-sm font-medium">
-                <span class="truncate">{{ playlist.title }}</span>
-                <UIcon
-                  v-if="playlist.pinned"
-                  name="i-bi-pin-fill"
-                  class="size-3 shrink-0 text-muted"
-                  aria-hidden="true"
-                />
-              </span>
-              <span class="block text-xs text-muted">{{ playlistLabel(playlist) }} · {{ playlist.entry_count }}</span>
-            </div>
-          </div>
-          <div class="shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" @click.stop>
-            <UDropdownMenu :items="dropdownItemsFor(playlist)" :ui="{ separator: 'hidden' }">
-              <UButton
-                type="button"
-                icon="i-bi-three-dots"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                aria-label="More actions"
-                class="cursor-pointer"
-              />
-            </UDropdownMenu>
-          </div>
-        </li>
+          :playlist="playlist"
+          :active-playlist-id="activePlaylistId"
+          :is-remote-playlist="isRemotePlaylist"
+          :thumbnail-src="playlistThumbnailSrc(playlist)"
+          :label="playlistLabel(playlist)"
+          :dropdown-items="dropdownItemsFor(playlist)"
+          @click="onPlaylistClick"
+        />
       </VueDraggable>
     </div>
 
@@ -195,6 +129,7 @@
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { VueDraggable } from "vue-draggable-plus";
+import PlaylistItem from "./PlaylistItem.vue";
 
 import { useLibraryState } from "../composables/useLibraryState";
 import { useUiState } from "../composables/useUiState";
