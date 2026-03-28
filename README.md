@@ -10,7 +10,7 @@
 **Self-hosted music for friends — everyone listens in sync.**
 
 Paste a YouTube, SoundCloud, or Mixcloud link and instantly create a **shared live stream**.  
-Open the same link on any device — browser or Sonos — and everyone hears the **exact same audio at the same time**.
+Open the same link on any device — browser or Sonos — and everyone hears the **exact same audio**.
 
 No accounts. No premium APIs. No sync issues.
 
@@ -22,11 +22,10 @@ No accounts. No premium APIs. No sync issues.
 
 Most music apps:
 - ❌ Everyone plays their own stream  
-- ❌ Sync drifts  
 - ❌ Limited to one platform  
 
 Airwave:
-- ✅ **One shared live stream** (perfect sync)  
+- ✅ **One shared live stream**
 - ✅ **Multi-source playback** (YouTube, SoundCloud, Mixcloud)  
 - ✅ **Works on browsers + Sonos**  
 - ✅ **Self-hosted, no lock-in**  
@@ -55,8 +54,6 @@ yt-dlp → ffmpeg → shared MP3 stream → all listeners
 - One audio pipeline  
 - One live stream  
 - Unlimited listeners  
-
-👉 This guarantees **perfect sync for everyone**
 
 ---
 
