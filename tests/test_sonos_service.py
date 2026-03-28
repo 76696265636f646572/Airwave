@@ -86,6 +86,31 @@ def test_sonos_discovery_falls_back_when_transport_lookup_fails(monkeypatch):
     assert speakers[0].is_playing is False
 
 
+def test_sonos_discovery_treats_group_less_speaker_as_single_member_group(monkeypatch):
+    class FakeSpeaker:
+        ip_address = "192.168.1.5"
+        player_name = "Office"
+        uid = "RINCON_789"
+        volume = 10
+        group = None
+
+        def get_current_transport_info(self):
+            return {"current_transport_state": "STOPPED"}
+
+    def fake_discover(timeout: int = 2):
+        _ = timeout
+        return [FakeSpeaker()]
+
+    monkeypatch.setattr(sonos_module, "discover", fake_discover)
+    service = SonosService()
+    speakers = service.discover_speakers()
+
+    assert len(speakers) == 1
+    assert speakers[0].group_member_uids == ["RINCON_789"]
+    assert speakers[0].coordinator_uid == "RINCON_789"
+    assert speakers[0].is_coordinator is True
+
+
 def test_sonos_play_stream_calls_play_uri(monkeypatch):
     calls = {}
 

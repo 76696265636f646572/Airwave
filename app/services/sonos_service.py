@@ -64,10 +64,12 @@ class SonosService:
         for speaker in speakers:
             uid = str(getattr(speaker, "uid", speaker.ip_address))
             group = getattr(speaker, "group", None)
-            coordinator_uid = None
-            group_member_uids: list[str] = []
+            group_member_uids: list[str] = [str(getattr(speaker, "uid", uid))]
+            coordinator_uid = group_member_uids[0]
             is_coordinator = True
             if group is not None:
+                coordinator_uid = None
+                group_member_uids = []
                 coordinator = getattr(group, "coordinator", None)
                 if coordinator is not None:
                     coordinator_uid = str(getattr(coordinator, "uid", None) or getattr(coordinator, "ip_address", ""))
