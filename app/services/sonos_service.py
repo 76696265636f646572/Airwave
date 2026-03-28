@@ -18,7 +18,7 @@ class SonosSpeaker:
     group_member_uids: list[str]
     volume: int | None
     transport_state: str | None
-    is_playing: bool
+    is_playing: bool | None
     is_coordinator: bool
 
 
@@ -90,7 +90,7 @@ class SonosService:
                     group_member_uids=group_member_uids,
                     volume=volume,
                     transport_state=transport_state,
-                    is_playing=transport_state in self.ACTIVE_TRANSPORT_STATES,
+                    is_playing=transport_state in self.ACTIVE_TRANSPORT_STATES if transport_state is not None else False,
                     is_coordinator=is_coordinator,
                 )
             )
