@@ -1,55 +1,124 @@
-# Airwave
+# Airwave 👋
 
-A WSL-friendly FastAPI application that exposes one shared live MP3 stream for all connected clients. Users can queue supported provider URLs into a shared queue (YouTube, SoundCloud, and Mixcloud single shows). **Spotify playlists** can be **imported into the library** (not queued directly): track titles are read without the Spotify Web API, then each track is matched against YouTube, SoundCloud, and Mixcloud search in parallel and stored like other saved playlists.
+![GitHub stars](https://img.shields.io/github/stars/76696265636f646572/Airwave?style=social)
+![GitHub forks](https://img.shields.io/github/forks/76696265636f646572/Airwave?style=social)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688.svg)
+[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
 
-## Quick Start
+**Airwave is a self-hosted, WSL-friendly radio stack: one shared live MP3 stream for every listener.** Paste **YouTube**, **SoundCloud**, or **Mixcloud** URLs into a **shared queue**; browsers and **Sonos** speakers all subscribe to the **same** stream URL. **Spotify playlists** import into your **library** (not the live queue): tracks are resolved against YouTube, SoundCloud, and Mixcloud in parallel, then you review matches before saving.
 
-1. Install Python 3.10+ and SQLite support.
-2. Install dependencies:
-   - `python3 -m venv .venv`
-   - `source .venv/bin/activate`
-   - `python -m pip install --upgrade pip setuptools wheel`
-   - `python -m pip install ".[dev]"`
-3. Install frontend dependencies and build local Vue assets:
-   - `npm install`
-   - `npm run build`
-4. Install `yt-dlp` binary:
-   - `./scripts/setup_yt_dlp.sh`
-5. Install `deno` (JS runtime for yt-dlp provider extraction support):
-   - `./scripts/setup_deno.sh`
-6. (Optional) install `ffmpeg` manually:
-   - `./scripts/setup_ffmpeg.sh`
-7. Start the app:
-   - `./scripts/run_dev.sh`
+Built with **FastAPI**, **Vue 3**, **yt-dlp**, **ffmpeg**, and **SQLite**—see [AGENTS.md](./AGENTS.md) for contributor-oriented repo map and conventions.
 
-Open `http://127.0.0.1:8000`.
+> [!TIP]
+> **Running in Docker with Sonos?** Use `network_mode: host` on Linux so SSDP discovery works, and set `AIRWAVE_PUBLIC_BASE_URL` to a **LAN-reachable** base URL (for example `http://192.168.1.50:8000`) so speakers can open the shared stream.
 
-## Supported Providers
+---
 
-- YouTube: single videos and playlists.
-- SoundCloud: single tracks and `/sets/` playlists.
-- Mixcloud: single shows only.
-- **Spotify:** **playlist URLs only** (`https://open.spotify.com/playlist/...`). Import adds a normal library playlist; playback uses the matched provider URLs (see below).
+## Key Features of Airwave ⭐
 
-## Spotify playlist import
+- 🔊 **One shared live stream**: Every client hears the same `/stream/live.mp3` feed from a single playback worker—no per-browser transcoding or duplicate encodes.
 
-Spotify support is **import-only**. Pasting a Spotify **playlist** link in the top bar shows **Import playlist** (no play/queue actions for that URL). After import you are taken to a **review page** (`/spotify-import/<playlist id>`) that lists tracks on the left and provider search results on the right. Searches for YouTube, SoundCloud, and Mixcloud run **in parallel** per track; the first hit in provider order (YouTube, then SoundCloud, then Mixcloud) is selected by default, and you can pick another result before continuing.
+- 📋 **Collaborative queue**: Add tracks from the web UI; the stream engine walks the queue, resolves sources, and fans MP3 chunks out to all subscribers.
 
-Implementation notes:
+- ▶️ **YouTube**: Queue single videos or full playlists; metadata and URLs flow through **yt-dlp** (with optional **deno** for extractor support).
 
-- Playlist metadata and track lists come from **[spotipyFree](https://github.com/TzurSoffer/spotipyFree)** (PyPI: `spotipyFree`), a Spotipy-like client that does **not** use the Spotify Web API or require a Spotify login. It may break if Spotify changes their site.
-- Matched entries are stored in the same **`playlists` / `playlist_entries`** tables as other imports; unresolved rows use an internal pending URL until a provider match is saved.
-- The generic **`POST /api/playlist/import`** endpoint rejects raw Spotify playlist URLs; use **`POST /api/spotify/import`** (see `app/api/routes.py`).
+- 🎧 **SoundCloud**: Single tracks and `/sets/` playlists import and queue like other library sources.
 
-## Docker
+- ☁️ **Mixcloud**: Single shows are supported end-to-end for queueing and playback.
+
+- 🎵 **Spotify playlist import (library-only)**: Paste a **playlist** URL (`https://open.spotify.com/playlist/...`) to **Import playlist**—not direct queue playback. **[spotipyFree](https://github.com/TzurSoffer/spotipyFree)** reads titles without the Spotify Web API or login; **YouTube, SoundCloud, and Mixcloud** searches run **in parallel** per track on the review page (`/spotify-import/<id>`). Pick the best match, then persist into the same `playlists` / `playlist_entries` model as other imports. Use **`POST /api/spotify/import`** (the generic playlist import endpoint rejects raw Spotify playlist URLs).
+
+- 🔈 **Sonos integration**: Discover speakers on the LAN, group them, control volume, and point them at the **same** public stream URL as the browser. Requires reachable `AIRWAVE_PUBLIC_BASE_URL` from the speaker network.
+
+- 🖥️ **Modern web UI**: **Vue 3**, **Vite**, and **@nuxt/ui** with theme switching (see `frontend/src/css/themes/` and [settings](./frontend/src/pages/settings.vue)).
+
+- 💾 **SQLite by default**: Queue, history, playlists, and settings persist through SQLAlchemy; override with `AIRWAVE_DB_URL` for other SQLAlchemy URLs.
+
+- ⚙️ **Environment-driven config**: Stream URL, bitrate, tool paths (`yt-dlp`, `ffmpeg`, `deno`), logging, and history limits are controlled with **`AIRWAVE_*`** variables (see below).
+
+- 🧪 **Test coverage**: Python tests under `tests/` plus browser smoke tests in `tests_e2e/`.
+
+- 🐳 **Docker-friendly**: `docker-compose` patterns documented for host networking when Sonos discovery matters.
+
+---
+
+## How to Install 🚀
+
+### Local development
+
+1. Install **Python 3.10+** and ensure SQLite is available.
+2. Create a virtualenv and install the app (dev extras recommended):
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install --upgrade pip setuptools wheel
+   python -m pip install ".[dev]"
+   ```
+
+3. Install and build the **Vue** frontend:
+
+   ```bash
+   npm install
+   npm run build
+   ```
+
+4. Install **yt-dlp**:
+
+   ```bash
+   ./scripts/setup_yt_dlp.sh
+   ```
+
+5. Install **deno** (used by yt-dlp for some extractors):
+
+   ```bash
+   ./scripts/setup_deno.sh
+   ```
+
+6. *(Optional)* Install **ffmpeg** (or let the app try a Linux fallback at startup):
+
+   ```bash
+   ./scripts/setup_ffmpeg.sh
+   ```
+
+7. Start the server:
+
+   ```bash
+   ./scripts/run_dev.sh
+   ```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+> [!NOTE]
+> If `ffmpeg` is missing on Linux, the app may auto-download a binary into `./bin/ffmpeg` at startup. For predictable production behavior, install ffmpeg explicitly.
+
+---
+
+## Supported providers
+
+| Provider    | Queue / playback              | Playlists                         |
+| ----------- | ----------------------------- | --------------------------------- |
+| YouTube     | Single videos                 | Playlists                         |
+| SoundCloud  | Single tracks                 | `/sets/` playlists                |
+| Mixcloud    | Single shows                  | —                                 |
+| Spotify     | Via matched URLs after import | **Playlist URLs → library import only** |
+
+---
+
+## Docker 🐳
 
 The included `docker-compose.yml` uses `network_mode: host` on Linux so Sonos discovery can receive the SSDP multicast traffic that Sonos speakers use on the LAN. The default Docker bridge network is often enough for the web UI, but not for Sonos discovery.
 
-When running in Docker for Sonos playback, also set `AIRWAVE_PUBLIC_BASE_URL` to a LAN-reachable URL such as `http://192.168.1.50:8000` so speakers can fetch the shared stream.
+When running in Docker for Sonos playback, set `AIRWAVE_PUBLIC_BASE_URL` to a LAN-reachable URL such as `http://192.168.1.50:8000` so speakers can fetch the shared stream.
 
-## Environment Variables
+---
 
-The app reads `AIRWAVE_*` variables from the environment or a local `.env` file. Example:
+## Environment variables
+
+The app reads `AIRWAVE_*` variables from the environment or a local `.env` file.
+
+### Example
 
 ```env
 AIRWAVE_HOST=0.0.0.0
@@ -58,13 +127,12 @@ AIRWAVE_PUBLIC_BASE_URL=http://192.168.1.50:8000
 AIRWAVE_FFMPEG_PATH=./bin/ffmpeg
 AIRWAVE_YT_DLP_PATH=./bin/yt-dlp
 AIRWAVE_DENO_PATH=./bin/deno
-AIRWAVE_LOG_LEVEL=info 
+AIRWAVE_LOG_LEVEL=info
 ```
 
-For log level, valid values are:
-debug, info, warning, error
+Valid log levels: `debug`, `info`, `warning`, `error`.
 
-### App Settings
+### App settings
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -85,29 +153,25 @@ debug, info, warning, error
 
 ### Notes
 
-1. `AIRWAVE_PUBLIC_BASE_URL` is the variable used to build the public stream URL for browsers and Sonos; set it to your host or IP (e.g. `http://192.168.1.50:8000`) when clients outside the local browser need to reach the stream.
+1. `AIRWAVE_PUBLIC_BASE_URL` builds the public stream URL for browsers and Sonos; set it to your host or IP (e.g. `http://192.168.1.50:8000`) when clients outside the local browser need to reach the stream.
 2. If `AIRWAVE_PUBLIC_BASE_URL` points at `localhost`, `0.0.0.0`, `host.docker.internal`, or a loopback IP, the app tries to detect a LAN IP automatically. Domain names (e.g. `airwave.local.example.com`) are used as-is.
 3. `AIRWAVE_FFMPEG_PATH` can be either a binary name on `PATH` or an explicit file path such as `./bin/ffmpeg`.
 4. `AIRWAVE_YT_DLP_PATH`, `AIRWAVE_FFMPEG_PATH`, and `AIRWAVE_DENO_PATH` are used both by the app and by the install helper scripts.
 
-## Running Tests
+---
 
-1. Activate your virtual environment:
-   - `source .venv/bin/activate`
-2. Install dev dependencies if you have not already:
-   - `python -m pip install ".[dev]"`
-3. Run the test suite:
-   - `python -m pytest`
-   - Tests default to a 300-second timeout per test.
+## Running tests
 
-If `ffmpeg` is missing, the app will try to auto-download a Linux binary from GitHub to `./bin/ffmpeg` at startup.
+1. Activate your virtual environment: `source .venv/bin/activate`
+2. Install dev dependencies if needed: `python -m pip install ".[dev]"`
+3. Run: `python -m pytest`  
+   Tests default to a **300-second** timeout per test.
 
-If the app is running in Docker or otherwise resolves to a non-routable local address for Sonos clients, set `AIRWAVE_PUBLIC_BASE_URL` to the full base URL (e.g. `http://192.168.1.50:8000`) you want the shared stream URL to use. On Linux Docker hosts, Sonos discovery also requires host networking because the default bridge network does not reliably expose SSDP multicast traffic to the container.
+---
 
+## App structure
 
-## App Structure
-
-### Runtime Architecture
+### Runtime architecture
 
 ```mermaid
 flowchart TD
@@ -146,7 +210,7 @@ flowchart TD
     SONOS --> LISTENERS
 ```
 
-### Directory Map
+### Directory map
 
 ```text
 airwave/   (repo root; formerly mytube)
@@ -200,7 +264,7 @@ airwave/   (repo root; formerly mytube)
 └── README.md
 ```
 
-### How The Pieces Fit Together
+### How the pieces fit together
 
 1. `uvicorn app.main:create_app --factory` starts the FastAPI app and builds shared singletons for the repository, stream engine, playlist service, Sonos service, yt-dlp service, and ffmpeg pipeline.
 2. The Vue frontend calls JSON endpoints in `app/api/routes.py` for queue management, playlist browsing/import, Spotify import flow, player state, provider-aware search, and Sonos control.
@@ -208,3 +272,9 @@ airwave/   (repo root; formerly mytube)
 4. `StreamEngine` runs in the background, polls the queue, resolves metadata with `YtDlpService`, streams source audio bytes from `yt-dlp`, pipes them through `FfmpegPipeline`, and publishes MP3 chunks to every connected listener.
 5. `/stream/live.mp3` does not create a separate stream per client; each subscriber receives the same shared live MP3 feed from `SharedMp3Hub`.
 6. Sonos endpoints use the same shared stream URL, so browser clients and Sonos speakers consume the same live output.
+
+---
+
+## Support 💬
+
+Questions and ideas: open an issue or see [CONTRIBUTING.md](./CONTRIBUTING.md) (including [Discussions](https://github.com/76696265636f646572/Airwave/discussions)).
