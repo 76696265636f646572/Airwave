@@ -57,33 +57,35 @@
           <span>{{ speaker.volume }}</span>
         </div>
 
-        <div v-if="isSpeakerExpanded(speaker.ip)" class="mt-4 border-t pt-4 playlist-card">
-          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
-            <label class="min-w-0">
-              <div class="mb-2 text-sm font-medium">Volume</div>
-              <USlider
-                :model-value="speaker.volume ?? 0"
-                :min="0"
-                :max="100"
-                color="neutral"
-                size="md"
-                @update:model-value="setSpeakerVolume({ ip: speaker.ip, volume: Number($event ?? 0) })"
-              />
-            </label>
-            <div class="text-sm text-muted">{{ speaker.volume ?? 0 }}</div>
-          </div>
+        <div v-if="isSpeakerExpanded(speaker.ip)" class="mt-4 border-t playlist-card">
+          <div v-for="member in speakerGroupMembers(speaker)" :key="member.uid" class="playlist-card">
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+              <label class="min-w-0">
+                <div class="text-sm mt-2 mb-2 font-medium">{{ speakerGroupMembers(speaker).length > 1 ? `${member.name} volume` : "Volume" }}</div>
+                <USlider
+                  :model-value="member.volume ?? 0"
+                  :min="0"
+                  :max="100"
+                  color="neutral"
+                  size="md"
+                  @update:model-value="setSpeakerVolume({ ip: member.ip, volume: Number($event ?? 0) })"
+                />
+              </label>
+              <div class="text-sm text-muted">{{ member.volume ?? 0 }}</div>
+            </div>
 
-          <div class="mt-4 grid grid-cols-3 gap-2">
-            <UButton
-              v-for="preset in volumePresets"
-              :key="preset.value"
-              type="button"
-              color="neutral"
-              variant="outline"
-              @click="setSpeakerVolume({ ip: speaker.ip, volume: preset.value })"
-            >
-              {{ preset.label }}
-            </UButton>
+            <div class="mt-4 grid grid-cols-3 gap-2">
+              <UButton
+                v-for="preset in volumePresets"
+                :key="preset.value"
+                type="button"
+                color="neutral"
+                variant="outline"
+                @click="setSpeakerVolume({ ip: member.ip, volume: preset.value })"
+              >
+                {{ preset.label }}
+              </UButton>
+            </div>
           </div>
 
           <div class="mt-4 flex items-center justify-between gap-3">
@@ -320,9 +322,15 @@ function speakerMenuItems(speaker) {
   ];
 }
 
+function speakerGroupMembers(speaker) {
+  if (Array.isArray(speaker?.group_members) && speaker.group_members.length > 0) {
+    return speaker.group_members;
+  }
+  return speakers.value.filter((candidate) => speaker?.group_member_uids?.includes(candidate.uid));
+}
+
 function speakerGroupSummary(speaker) {
-  const allSpeakers = speakers.value;
-  const groupMembers = allSpeakers.filter((s) => speaker.group_member_uids.includes(s.uid));
+  const groupMembers = speakerGroupMembers(speaker);
   if (groupMembers.length > 1) {
     return `${groupMembers.length} speakers in group`;
   }

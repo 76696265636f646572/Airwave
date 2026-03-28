@@ -185,7 +185,16 @@ class FakeSonosService:
                 group_member_uids=["RINCON_123", "RINCON_456"],
                 volume=25,
                 is_coordinator=True,
-            )
+            ),
+            SimpleNamespace(
+                ip="192.168.1.11",
+                name="Kitchen",
+                uid="RINCON_456",
+                coordinator_uid="RINCON_123",
+                group_member_uids=["RINCON_123", "RINCON_456"],
+                volume=18,
+                is_coordinator=False,
+            ),
         ]
 
     def play_stream(self, speaker_ip: str, stream_url: str) -> None:
@@ -706,11 +715,32 @@ def test_sonos_endpoints(tmp_path):
         speakers = client.get("/api/sonos/speakers")
         assert speakers.status_code == 200
         payload = speakers.json()
-        assert len(payload) == 1
-        assert payload[0]["name"] == "Living Room"
-        assert payload[0]["uid"] == "RINCON_123"
-        assert payload[0]["group_member_uids"] == ["RINCON_123", "RINCON_456"]
-        assert payload[0]["is_coordinator"] is True
+        assert len(payload) == 2
+
+        living_room = next(item for item in payload if item["uid"] == "RINCON_123")
+        assert living_room["name"] == "Living Room"
+        assert living_room["group_member_uids"] == ["RINCON_123", "RINCON_456"]
+        assert living_room["is_coordinator"] is True
+        assert living_room["group_members"] == [
+            {
+                "ip": "192.168.1.10",
+                "name": "Living Room",
+                "uid": "RINCON_123",
+                "coordinator_uid": "RINCON_123",
+                "group_member_uids": ["RINCON_123", "RINCON_456"],
+                "volume": 25,
+                "is_coordinator": True,
+            },
+            {
+                "ip": "192.168.1.11",
+                "name": "Kitchen",
+                "uid": "RINCON_456",
+                "coordinator_uid": "RINCON_123",
+                "group_member_uids": ["RINCON_123", "RINCON_456"],
+                "volume": 18,
+                "is_coordinator": False,
+            },
+        ]
 
         play = client.post("/api/sonos/play", json={"speaker_ip": "192.168.1.10"})
         assert play.status_code == 200

@@ -252,6 +252,28 @@ def _serialize_history_rows(rows: list[Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _serialize_sonos_speaker_base(speaker: Any) -> dict[str, Any]:
+    return {
+        "ip": speaker.ip,
+        "name": speaker.name,
+        "uid": speaker.uid,
+        "coordinator_uid": speaker.coordinator_uid,
+        "group_member_uids": speaker.group_member_uids,
+        "volume": speaker.volume,
+        "is_coordinator": speaker.is_coordinator,
+    }
+
+
+def _serialize_sonos_speaker(speaker: Any, speakers_by_uid: dict[str, Any]) -> dict[str, Any]:
+    payload = _serialize_sonos_speaker_base(speaker)
+    payload["group_members"] = [
+        _serialize_sonos_speaker_base(member)
+        for member_uid in speaker.group_member_uids
+        if (member := speakers_by_uid.get(member_uid)) is not None
+    ]
+    return payload
+
+
 def build_ui_snapshot(app, base_url: str) -> dict[str, Any]:
     settings = app.state.settings
     stream_url = _stream_url_from_base(settings, base_url)
@@ -834,18 +856,8 @@ def stream_live(request: Request) -> StreamingResponse:
 @api_router.get("/sonos/speakers")
 def sonos_speakers(request: Request) -> list[dict[str, Any]]:
     speakers = _services(request)["sonos"].discover_speakers()
-    return [
-        {
-            "ip": speaker.ip,
-            "name": speaker.name,
-            "uid": speaker.uid,
-            "coordinator_uid": speaker.coordinator_uid,
-            "group_member_uids": speaker.group_member_uids,
-            "volume": speaker.volume,
-            "is_coordinator": speaker.is_coordinator,
-        }
-        for speaker in speakers
-    ]
+    speakers_by_uid = {speaker.uid: speaker for speaker in speakers}
+    return [_serialize_sonos_speaker(speaker, speakers_by_uid) for speaker in speakers]
 
 
 @api_router.post("/sonos/play")

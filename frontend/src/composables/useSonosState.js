@@ -81,7 +81,13 @@ export function useSonosState() {
     const previousVolume = speaker?.volume;
     // Replace the speaker in the array so Vue reactivity updates the UI immediately
     function withVolume(vol) {
-      return speakers.value.map((s) => (s.ip === ip ? { ...s, volume: vol } : s));
+      return speakers.value.map((s) => ({
+        ...s,
+        volume: s.ip === ip ? vol : s.volume,
+        group_members: Array.isArray(s.group_members)
+          ? s.group_members.map((member) => (member.ip === ip ? { ...member, volume: vol } : member))
+          : s.group_members,
+      }));
     }
     speakers.value = withVolume(volume);
     try {
