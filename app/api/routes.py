@@ -265,7 +265,7 @@ def _serialize_sonos_speaker_base(speaker: Any) -> dict[str, Any]:
         "group_member_uids": speaker.group_member_uids,
         "volume": speaker.volume,
         "transport_state": getattr(speaker, "transport_state", None),
-        "is_playing": getattr(speaker, "is_playing", None),
+        "is_playing": bool(getattr(speaker, "is_playing", False)),
         "is_coordinator": speaker.is_coordinator,
     }
 
