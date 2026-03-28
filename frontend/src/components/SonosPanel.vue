@@ -191,8 +191,8 @@ import { computed, ref, watch } from "vue";
 import { useSonosState } from "../composables/useSonosState";
 
 const volumePresets = [
-  { label: "Low", value: 25 },
-  { label: "Medium", value: 50 },
+  { label: "Low", value: 10 },
+  { label: "Medium", value: 30 },
   { label: "High", value: 75 },
 ];
 
