@@ -33,16 +33,20 @@ class SonosSpeaker:
 SONOS_V1_SETTING_KEYS: tuple[str, ...] = (
     "balance",
     "bass",
+    "cross_fade",
     "loudness",
     "mic_enabled",
     "music_surround_level",
     "night_mode",
-    "sub_gain",
+    "speech_enhancement",
     "sub_enabled",
+    "sub_gain",
     "surround_enabled",
     "surround_level",
     "surround_full_volume_enabled",
     "treble",
+    "audio_delay",
+    "audio_input_format",
 )
 
 READONLY_SETTINGS = frozenset({"audio_input_format", "mic_enabled"})
