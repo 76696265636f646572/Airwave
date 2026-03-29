@@ -198,54 +198,55 @@
           {{ speakerSettingsLoadError }}
         </p>
         <ul
-          v-else-if="visibleSonosSettingKeys.length"
+          v-else-if="visibleSonosSettings.length"
           class="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
         >
           <li
-            v-for="key in visibleSonosSettingKeys"
-            :key="key"
+            v-for="row in visibleSonosSettings"
+            :key="row.key"
             class="flex items-center gap-3 rounded-lg border border-neutral-700/80 px-3 py-2.5 playlist-card surface-elevated"
           >
             <UIcon
-              :name="sonosSettingIcon(key)"
+              :name="row.icon"
               class="size-5 shrink-0"
               :class="
-                sonosSettingIconAccent(key)
+                row.iconAccentWhenOn && speakerSettingsLocal[row.key] === true
                   ? 'text-amber-400'
                   : 'text-neutral-300'
               "
             />
             <div class="min-w-0 flex-1 text-sm font-medium leading-tight">
-              {{ sonosSettingLabel(key) }}
+              {{ row.label }}
             </div>
 
-            <template v-if="sonosSettingReadonly(key)">
+            <template v-if="row.type === 'readonly'">
               <span class="shrink-0 text-sm tabular-nums text-neutral-200">
-                {{ sonosReadonlyDisplay(key) }}
+                {{ sonosReadonlyDisplay(row) }}
               </span>
             </template>
-            <template v-else-if="typeof speakerSettingsLocal[key] === 'boolean'">
+            <template v-else-if="row.type === 'boolean'">
               <input
                 type="checkbox"
-                class="h-4 w-4 shrink-0 accent-primary-500"
-                :checked="speakerSettingsLocal[key]"
-                :aria-label="sonosSettingLabel(key)"
-                @change="onSonosBoolChange(key, $event.target.checked)"
+                role="switch"
+                class="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full border border-neutral-600 bg-neutral-700 transition-colors checked:border-primary-500 checked:bg-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+                :checked="speakerSettingsLocal[row.key]"
+                :aria-label="row.label"
+                @change="onSonosBoolChange(row.key, $event.target.checked)"
               />
             </template>
             <template v-else>
               <div class="flex min-w-0 max-w-[14rem] flex-1 items-center gap-2 sm:max-w-[18rem]">
                 <USlider
                   class="min-w-0 flex-1"
-                  :model-value="speakerSettingsLocal[key]"
-                  :min="sonosNumericRange(key).min"
-                  :max="sonosNumericRange(key).max"
+                  :model-value="speakerSettingsLocal[row.key]"
+                  :min="row.min"
+                  :max="row.max"
                   color="primary"
                   size="sm"
-                  @update:model-value="onSonosSliderChange(key, $event)"
+                  @update:model-value="onSonosSliderChange(row, $event)"
                 />
                 <span class="w-8 shrink-0 text-right text-sm tabular-nums text-muted">
-                  {{ speakerSettingsLocal[key] }}
+                  {{ speakerSettingsLocal[row.key] }}
                 </span>
               </div>
             </template>
@@ -275,127 +276,25 @@ import { useSonosState } from "../composables/useSonosState";
 import { MOBILE_VIEW_SONOS, SIDEBAR_SONOS_VIEW, useUiState } from "../composables/useUiState";
 
 
-const SONOS_SETTINGS = {
-  "balance": {
-    label: "Balance",
-    icon: "i-bi-sliders",
-    type: "slider",
-    min: -100,
-    max: 100,
-  },
-  "bass": {
-    label: "Bass",
-    icon: "i-bi-sliders",
-    type: "slider",
-    min: -10,
-    max: 10,
-  },
-  "loudness": {
-    label: "Loudness",
-    icon: "i-bi-megaphone-fill",
-    type: "boolean",
-  },
-  "mic_enabled": {
-    label: "Microphone",
-    icon: "i-bi-mic-fill",
-    type: "boolean",
-  },
-  "music_surround_level": {
-    label: "Music surround level",
-    icon: "i-bi-music-note-beamed",
-    type: "slider",
-    min: -15,
-    max: 15,
-  },
-  "night_mode": {
-    label: "Night sound",
-
-    type: "boolean",
-  },
-  "sub_enabled": {
-    label: "Subwoofer",
-    icon: "i-bi-speaker-fill",
-    type: "boolean",
-  },
-  "sub_gain": {
-    label: "Subwoofer level",
-    icon: "i-bi-sliders",
-    type: "slider",
-    min: -15,
-    max: 15,
-  },
-  "surround_enabled": {
-    label: "Surround audio",
-    icon: "i-bi-broadcast",
-    type: "boolean",
-  },
-  "surround_level": {
-    label: "Surround level",
-    icon: "i-bi-sliders",
-    type: "slider",
-    min: -15,
-    max: 15,
-  },
-  "surround_full_volume_enabled": {
-    label: "Surround music full volume",
-    icon: "i-bi-music-note",
-    type: "boolean",
-  },
-  "treble": {
-    label: "Treble",
-    icon: "i-bi-sliders",
-    type: "slider",
-    min: -10,
-    max: 10,
-  },
-};
-
-const SONOS_SETTINGS_ORDER = [
-  "balance",
-  "bass",
-  "loudness",
-  "mic_enabled",
-  "music_surround_level",
-  "night_mode",
-  "sub_enabled",
-  "sub_gain",
-  "surround_enabled",
-  "surround_level",
-  "surround_full_volume_enabled",
-  "treble",
+/** Display order and control metadata for Sonos settings modal (keys match API). */
+const SONOS_SETTINGS = [
+  { key: "balance", label: "Balance", icon: "i-bi-sliders", type: "slider", min: -100, max: 100 },
+  { key: "bass", label: "Bass", icon: "i-bi-sliders", type: "slider", min: -10, max: 10 },
+  { key: "cross_fade", label: "Crossfade", icon: "i-bi-shuffle", type: "boolean" },
+  { key: "loudness", label: "Loudness", icon: "i-bi-megaphone-fill", type: "boolean", iconAccentWhenOn: true },
+  { key: "mic_enabled", label: "Microphone", icon: "i-bi-mic-fill", type: "readonly", readonlyVariant: "boolean" },
+  { key: "music_surround_level", label: "Music surround level", icon: "i-bi-music-note-beamed", type: "slider", min: -15, max: 15 },
+  { key: "night_mode", label: "Night sound", icon: "i-bi-moon-stars-fill", type: "boolean" },
+  { key: "speech_enhancement", label: "Speech enhancement", icon: "i-bi-chat-square-text-fill", type: "boolean" },
+  { key: "sub_enabled", label: "Subwoofer", icon: "i-bi-speaker-fill", type: "boolean", iconAccentWhenOn: true },
+  { key: "sub_gain", label: "Subwoofer level", icon: "i-bi-sliders", type: "slider", min: -15, max: 15 },
+  { key: "surround_enabled", label: "Surround audio", icon: "i-bi-broadcast", type: "boolean", iconAccentWhenOn: true },
+  { key: "surround_level", label: "Surround level", icon: "i-bi-sliders", type: "slider", min: -15, max: 15 },
+  { key: "surround_full_volume_enabled", label: "Surround music full volume", icon: "i-bi-music-note", type: "boolean" },
+  { key: "treble", label: "Treble", icon: "i-bi-sliders", type: "slider", min: -10, max: 10 },
+  { key: "audio_delay", label: "Audio delay", icon: "i-bi-clock-history", type: "slider", min: 0, max: 5 },
+  { key: "audio_input_format", label: "Audio input format", icon: "i-bi-hdmi", type: "readonly", readonlyVariant: "string" },
 ];
-
-const SONOS_SETTING_LABELS = {
-  balance: "Balance",
-  bass: "Bass",
-  loudness: "Loudness",
-  mic_enabled: "Microphone",
-  music_surround_level: "Music surround level",
-  night_mode: "Night sound",
-  sub_enabled: "Subwoofer",
-  sub_gain: "Subwoofer level",
-  surround_enabled: "Surround audio",
-  surround_level: "Surround level",
-  surround_full_volume_enabled: "Surround music full volume",
-  treble: "Treble",
-};
-
-const SONOS_SETTING_ICONS = {
-  balance: "i-bi-sliders",
-  bass: "i-bi-sliders",
-  loudness: "i-bi-megaphone-fill",
-  mic_enabled: "i-bi-mic-fill",
-  music_surround_level: "i-bi-music-note-beamed",
-  night_mode: "i-bi-moon-stars-fill",
-  sub_gain: "i-bi-sliders",
-  sub_enabled: "i-bi-speaker-fill",
-  surround_enabled: "i-bi-broadcast",
-  surround_level: "i-bi-sliders",
-  surround_full_volume_enabled: "i-bi-music-note",
-  treble: "i-bi-sliders",
-};
-
-const SONOS_READONLY_SETTINGS = new Set(["audio_input_format", "mic_enabled"]);
 
 const SONOS_SLIDER_DEBOUNCE_MS = 320;
 
@@ -459,12 +358,12 @@ const speakerSettingsTitleName = computed(() => (
   speakerSettingsMetaName.value || speakerSettingsTarget.value?.name || "Speaker"
 ));
 
-const visibleSonosSettingKeys = computed(() => {
+const visibleSonosSettings = computed(() => {
   const local = speakerSettingsLocal.value;
   if (!local) {
     return [];
   }
-  return SONOS_SETTINGS_ORDER.filter((key) => local[key] !== null && local[key] !== undefined);
+  return SONOS_SETTINGS.filter((row) => local[row.key] !== null && local[row.key] !== undefined);
 });
 
 const isPanelVisible = computed(() => (
@@ -609,53 +508,13 @@ function openSpeakerSettings(speaker) {
   speakerSettingsOpen.value = true;
 }
 
-function sonosSettingLabel(key) {
-  return SONOS_SETTING_LABELS[key] || key;
-}
-
-function sonosSettingIcon(key) {
-  return SONOS_SETTING_ICONS[key] || "i-bi-sliders";
-}
-
-function sonosSettingIconAccent(key) {
-  const local = speakerSettingsLocal.value;
-  if (!local || typeof local[key] !== "boolean") {
-    return false;
-  }
-  return (
-    (key === "loudness" && local[key] === true)
-    || (key === "sub_enabled" && local[key] === true)
-    || (key === "surround_enabled" && local[key] === true)
-  );
-}
-
-function sonosSettingReadonly(key) {
-  return SONOS_READONLY_SETTINGS.has(key);
-}
-
-function sonosNumericRange(key) {
-  if (key === "bass" || key === "treble") {
-    return { min: -10, max: 10 };
-  }
-  if (key === "sub_gain" || key === "surround_level" || key === "music_surround_level") {
-    return { min: -15, max: 15 };
-  }
-  if (key === "audio_delay") {
-    return { min: 0, max: 5 };
-  }
-  if (key === "balance") {
-    return { min: -100, max: 100 };
-  }
-  return { min: 0, max: 100 };
-}
-
-function sonosReadonlyDisplay(key) {
+function sonosReadonlyDisplay(row) {
   const local = speakerSettingsLocal.value;
   if (!local) {
     return "—";
   }
-  const v = local[key];
-  if (key === "mic_enabled") {
+  const v = local[row.key];
+  if (row.readonlyVariant === "boolean") {
     return v ? "On" : "Off";
   }
   return v === null || v === undefined || v === "" ? "—" : String(v);
@@ -699,21 +558,20 @@ async function commitSonosSliderWrite(ip, setting, value) {
   }
 }
 
-function onSonosSliderChange(key, raw) {
-  if (!speakerSettingsLocal.value) {
+function onSonosSliderChange(row, raw) {
+  if (!speakerSettingsLocal.value || row.type !== "slider") {
     return;
   }
   const n = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
   if (!Number.isFinite(n)) {
     return;
   }
-  const { min, max } = sonosNumericRange(key);
-  const clamped = Math.round(Math.max(min, Math.min(max, n)));
+  const clamped = Math.round(Math.max(row.min, Math.min(row.max, n)));
   speakerSettingsLocal.value = {
     ...speakerSettingsLocal.value,
-    [key]: clamped,
+    [row.key]: clamped,
   };
-  getSonosSliderDebouncer(key)(speakerSettingsSpeakerIp.value, key, clamped);
+  getSonosSliderDebouncer(row.key)(speakerSettingsSpeakerIp.value, row.key, clamped);
 }
 
 async function onSonosBoolChange(key, checked) {
