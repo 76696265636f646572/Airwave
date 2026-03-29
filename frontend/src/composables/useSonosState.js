@@ -158,29 +158,57 @@ export function useSonosState() {
     });
   }
 
+  function withVolumeForIp(state, targetIp, vol) {
+    return state.map((s) => ({
+      ...s,
+      volume: s.ip === targetIp ? vol : s.volume,
+      group_members: Array.isArray(s.group_members)
+        ? s.group_members.map((member) => (member.ip === targetIp ? { ...member, volume: vol } : member))
+        : s.group_members,
+    }));
+  }
+
+  async function postVolumeToDevice(ip, volume) {
+    await fetchJson("/api/sonos/volume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ speaker_ip: ip, volume }),
+    });
+  }
+
+  /** Update in-memory speaker volumes only (responsive slider before debounced POST). */
+  function previewSonosVolumes(targetIps, volume) {
+    const set = new Set(targetIps);
+    speakers.value = speakers.value.map((s) => ({
+      ...s,
+      volume: set.has(s.ip) ? volume : s.volume,
+      group_members: Array.isArray(s.group_members)
+        ? s.group_members.map((member) => (set.has(member.ip) ? { ...member, volume } : member))
+        : s.group_members,
+    }));
+  }
+
+  /** POST volume; state should already match via preview. On failure, resync from server. */
+  async function commitSpeakerVolume({ ip, volume }) {
+    try {
+      await postVolumeToDevice(ip, volume);
+      return true;
+    } catch (error) {
+      notifyError("Could not set volume", error);
+      await refreshSonos({ silent: true });
+      return false;
+    }
+  }
+
   async function setSpeakerVolume({ ip, volume }) {
     const speaker = speakers.value.find((s) => s.ip === ip);
     const previousVolume = speaker?.volume;
-    // Replace the speaker in the array so Vue reactivity updates the UI immediately
-    function withVolume(vol) {
-      return speakers.value.map((s) => ({
-        ...s,
-        volume: s.ip === ip ? vol : s.volume,
-        group_members: Array.isArray(s.group_members)
-          ? s.group_members.map((member) => (member.ip === ip ? { ...member, volume: vol } : member))
-          : s.group_members,
-      }));
-    }
-    speakers.value = withVolume(volume);
+    speakers.value = withVolumeForIp(speakers.value, ip, volume);
     try {
-      await fetchJson("/api/sonos/volume", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ speaker_ip: ip, volume }),
-      });
+      await postVolumeToDevice(ip, volume);
       return true;
     } catch (error) {
-      speakers.value = withVolume(previousVolume ?? 0);
+      speakers.value = withVolumeForIp(speakers.value, ip, previousVolume ?? 0);
       notifyError("Could not set volume", error);
       return false;
     }
@@ -195,6 +223,8 @@ export function useSonosState() {
     groupSpeaker,
     ungroupSpeaker,
     setSpeakerVolume,
+    previewSonosVolumes,
+    commitSpeakerVolume,
     loadSpeakerSettings,
     updateSpeakerSetting,
   };
