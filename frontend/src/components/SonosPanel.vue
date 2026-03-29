@@ -73,19 +73,36 @@
           </label>
 
           <div v-for="member in speakerGroupMembers(speaker)" :key="member.uid" class="playlist-card">
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
-              <label class="min-w-0">
-                <div class="text-sm mt-2 mb-2 font-medium">{{ speakerGroupMembers(speaker).length > 1 ? `${member.name} volume` : "Volume" }}</div>
-                <USlider
-                  :model-value="member.volume ?? 0"
-                  :min="0"
-                  :max="100"
-                  color="neutral"
-                  size="md"
-                  @update:model-value="updateSpeakerVolume(speaker, member.ip, $event)"
-                />
+            <div class="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-2">
+              <label
+                class="min-w-0 truncate text-sm font-medium"
+                :for="`sonos-volume-${member.ip}`"
+              >
+                {{ speakerGroupMembers(speaker).length > 1 ? `${member.name} volume` : "Volume" }}
               </label>
-              <div class="text-sm text-muted">{{ member.volume ?? 0 }}</div>
+              <div class="flex justify-end">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                  class="shrink-0 p-0 cursor-pointer"
+                  icon="i-bi-gear-fill"
+                  :aria-label="`Speaker settings for ${member.name}`"
+                  @click="openSpeakerSettings(member)"
+                />
+              </div>
+              <USlider
+                :id="`sonos-volume-${member.ip}`"
+                class="min-w-0"
+                :model-value="member.volume ?? 0"
+                :min="0"
+                :max="100"
+                color="neutral"
+                size="md"
+                @update:model-value="onVolumeSliderInput(speaker, member.ip, $event)"
+              />
+              <div class="text-sm text-muted tabular-nums">{{ member.volume ?? 0 }}</div>
             </div>
 
             <div class="mt-4 grid grid-cols-4 gap-2 overflow-hidden">
@@ -182,17 +199,81 @@
     </template>
   </UModal>
 
-  <UModal v-model:open="speakerSettingsOpen" :ui="{ width: 'max-w-sm' }">
+  <UModal v-model:open="speakerSettingsOpen" :ui="{ width: 'max-w-lg' }">
     <template #content>
-      <div class="p-4">
-        <h3 class="text-lg font-semibold">Speaker settings</h3>
-        <p class="mt-2 text-sm text-muted">
-          {{ speakerSettingsTarget?.name || "Speaker" }}
-          <span v-if="speakerSettingsTarget?.ip">({{ speakerSettingsTarget.ip }})</span>
+      <div class="flex max-h-[min(80vh,36rem)] flex-col p-4">
+        <h3 class="shrink-0 text-lg font-semibold">Speaker settings</h3>
+        <p class="mt-1 shrink-0 text-sm text-muted">
+          {{ speakerSettingsTitleName }}
+          <span v-if="speakerSettingsSpeakerIp">({{ speakerSettingsSpeakerIp }})</span>
         </p>
-        <p class="mt-4 text-sm text-muted">Additional speaker settings will be added here.</p>
 
-        <div class="mt-4 flex justify-end gap-2">
+        <div v-if="speakerSettingsLoading" class="mt-6 text-sm text-muted">
+          Loading settings…
+        </div>
+        <p v-else-if="speakerSettingsLoadError" class="mt-6 text-sm text-red-400">
+          {{ speakerSettingsLoadError }}
+        </p>
+        <ul
+          v-else-if="visibleSonosSettings.length"
+          class="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1"
+        >
+          <li
+            v-for="row in visibleSonosSettings"
+            :key="row.key"
+            class="flex items-center gap-3 rounded-lg border border-neutral-700/80 px-3 py-2.5 playlist-card surface-elevated"
+          >
+            <UIcon
+              :name="row.icon"
+              class="size-5 shrink-0"
+              :class="
+                row.iconAccentWhenOn && speakerSettingsLocal[row.key] === true
+                  ? 'text-amber-400'
+                  : 'text-neutral-300'
+              "
+            />
+            <div class="min-w-0 flex-1 text-sm font-medium leading-tight">
+              {{ row.label }}
+            </div>
+
+            <template v-if="row.type === 'readonly'">
+              <span class="shrink-0 text-sm tabular-nums text-neutral-200">
+                {{ sonosReadonlyDisplay(row) }}
+              </span>
+            </template>
+            <template v-else-if="row.type === 'boolean'">
+              <input
+                type="checkbox"
+                role="switch"
+                class="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full border border-neutral-600 bg-neutral-700 transition-colors checked:border-primary-500 checked:bg-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+                :checked="speakerSettingsLocal[row.key]"
+                :aria-label="row.label"
+                @change="onSonosBoolChange(row.key, $event.target.checked)"
+              />
+            </template>
+            <template v-else>
+              <div class="flex min-w-0 max-w-[14rem] flex-1 items-center gap-2 sm:max-w-[18rem]">
+                <USlider
+                  class="min-w-0 flex-1"
+                  :model-value="speakerSettingsLocal[row.key]"
+                  :min="row.min"
+                  :max="row.max"
+                  color="primary"
+                  size="sm"
+                  @update:model-value="onSonosSliderChange(row, $event)"
+                />
+                <span class="w-8 shrink-0 text-right text-sm tabular-nums text-muted">
+                  {{ speakerSettingsLocal[row.key] }}
+                </span>
+              </div>
+            </template>
+          </li>
+        </ul>
+        <p v-else class="mt-6 text-sm text-muted">
+          No adjustable settings are available for this speaker.
+        </p>
+
+        <div class="mt-4 flex shrink-0 justify-end gap-2 border-t border-neutral-700/60 pt-4">
           <UButton type="button" color="neutral" variant="ghost" @click="speakerSettingsOpen = false">
             Close
           </UButton>
@@ -206,8 +287,34 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 
 import { useBreakpoint } from "../composables/useBreakpoint";
+import { debounce } from "../composables/useDebounce";
+import { useNotifications } from "../composables/useNotifications";
 import { useSonosState } from "../composables/useSonosState";
 import { MOBILE_VIEW_SONOS, SIDEBAR_SONOS_VIEW, useUiState } from "../composables/useUiState";
+
+
+/** Display order and control metadata for Sonos settings modal (keys match API). */
+const SONOS_SETTINGS = [
+  { key: "balance", label: "Balance", icon: "i-bi-sliders", type: "slider", min: -100, max: 100 },
+  { key: "bass", label: "Bass", icon: "i-bi-sliders", type: "slider", min: -10, max: 10 },
+  { key: "cross_fade", label: "Crossfade", icon: "i-bi-shuffle", type: "boolean" },
+  { key: "loudness", label: "Loudness", icon: "i-bi-megaphone-fill", type: "boolean", iconAccentWhenOn: true },
+  { key: "mic_enabled", label: "Microphone", icon: "i-bi-mic-fill", type: "readonly", readonlyVariant: "boolean" },
+  { key: "music_surround_level", label: "Music surround level", icon: "i-bi-music-note-beamed", type: "slider", min: -15, max: 15 },
+  { key: "night_mode", label: "Night sound", icon: "i-bi-moon-stars-fill", type: "boolean" },
+  { key: "speech_enhancement", label: "Speech enhancement", icon: "i-bi-chat-square-text-fill", type: "boolean" },
+  { key: "sub_enabled", label: "Subwoofer", icon: "i-bi-speaker-fill", type: "boolean", iconAccentWhenOn: true },
+  { key: "sub_gain", label: "Subwoofer level", icon: "i-bi-sliders", type: "slider", min: -15, max: 15 },
+  { key: "surround_enabled", label: "Surround audio", icon: "i-bi-broadcast", type: "boolean", iconAccentWhenOn: true },
+  { key: "surround_level", label: "Surround level", icon: "i-bi-sliders", type: "slider", min: -15, max: 15 },
+  { key: "surround_full_volume_enabled", label: "Surround music full volume", icon: "i-bi-music-note", type: "boolean" },
+  { key: "treble", label: "Treble", icon: "i-bi-sliders", type: "slider", min: -10, max: 10 },
+  { key: "audio_delay", label: "Audio delay", icon: "i-bi-clock-history", type: "slider", min: 0, max: 5 },
+  { key: "audio_input_format", label: "Audio input format", icon: "i-bi-hdmi", type: "readonly", readonlyVariant: "string" },
+];
+
+const SONOS_SLIDER_DEBOUNCE_MS = 420;
+const VOLUME_SLIDER_DEBOUNCE_MS = 420;
 
 const volumePresets = [
   { label: "Mute", value: 0 },
@@ -225,7 +332,12 @@ const {
   groupSpeaker,
   ungroupSpeaker,
   setSpeakerVolume,
+  previewSonosVolumes,
+  commitSpeakerVolume,
+  loadSpeakerSettings,
+  updateSpeakerSetting,
 } = useSonosState();
+const { notifyError } = useNotifications();
 const { isMobile } = useBreakpoint();
 const { sidebarView, mobileView } = useUiState();
 
@@ -238,6 +350,12 @@ const groupSettingsBusy = ref(false);
 const groupSettingsPendingIp = ref("");
 const speakerSettingsOpen = ref(false);
 const speakerSettingsSpeakerIp = ref("");
+const speakerSettingsLoading = ref(false);
+const speakerSettingsLoadError = ref("");
+const speakerSettingsLocal = ref(null);
+const speakerSettingsMetaName = ref("");
+const sliderDebouncers = new Map();
+const volumeDebouncers = new Map();
 
 const groupedSpeakers = computed(() => (
   sortedSpeakers.value.filter((speaker) => speaker.is_coordinator)
@@ -256,6 +374,18 @@ const groupSettingsAnchorSpeaker = computed(() => (
 const speakerSettingsTarget = computed(() => (
   sortedSpeakers.value.find((speaker) => speaker.ip === speakerSettingsSpeakerIp.value) ?? null
 ));
+
+const speakerSettingsTitleName = computed(() => (
+  speakerSettingsMetaName.value || speakerSettingsTarget.value?.name || "Speaker"
+));
+
+const visibleSonosSettings = computed(() => {
+  const local = speakerSettingsLocal.value;
+  if (!local) {
+    return [];
+  }
+  return SONOS_SETTINGS.filter((row) => local[row.key] !== null && local[row.key] !== undefined);
+});
 
 const isPanelVisible = computed(() => (
   isMobile.value ? mobileView.value === MOBILE_VIEW_SONOS : sidebarView.value === SIDEBAR_SONOS_VIEW
@@ -276,10 +406,34 @@ watch(groupSettingsOpen, (open) => {
 watch(speakerSettingsOpen, (open) => {
   if (open) return;
   speakerSettingsSpeakerIp.value = "";
+  speakerSettingsLoading.value = false;
+  speakerSettingsLoadError.value = "";
+  speakerSettingsLocal.value = null;
+  speakerSettingsMetaName.value = "";
+  sliderDebouncers.clear();
+});
+
+watch([speakerSettingsOpen, speakerSettingsSpeakerIp], async ([open, ip]) => {
+  if (!open || !ip) {
+    return;
+  }
+  speakerSettingsLoading.value = true;
+  speakerSettingsLoadError.value = "";
+  try {
+    const data = await loadSpeakerSettings(ip);
+    speakerSettingsMetaName.value = data.speaker_name || "";
+    speakerSettingsLocal.value = { ...data.settings };
+  } catch (error) {
+    speakerSettingsLoadError.value = error?.message || "Could not load settings";
+    speakerSettingsLocal.value = null;
+  } finally {
+    speakerSettingsLoading.value = false;
+  }
 });
 
 onUnmounted(() => {
   stopPanelRefresh();
+  volumeDebouncers.clear();
 });
 
 function stopPanelRefresh() {
@@ -312,11 +466,44 @@ function setGroupVolumeLinked(ip, linked) {
   };
 }
 
-async function updateSpeakerVolume(speaker, memberIp, rawVolume) {
+function clampSonosVolume(rawVolume) {
   const volume = Array.isArray(rawVolume) ? Number(rawVolume[0] ?? 0) : Number(rawVolume ?? 0);
   const clampedVolume = Math.max(0, Math.min(100, volume));
+  return Number.isFinite(clampedVolume) ? clampedVolume : null;
+}
 
-  if (!Number.isFinite(clampedVolume)) {
+function volumeSliderDebounceKey(speaker, memberIp) {
+  return isGroupVolumeLinked(speaker.ip) ? `linked:${speaker.ip}` : `vol:${memberIp}`;
+}
+
+function getVolumeSliderDebouncer(speaker, memberIp) {
+  const key = volumeSliderDebounceKey(speaker, memberIp);
+  if (!volumeDebouncers.has(key)) {
+    volumeDebouncers.set(
+      key,
+      debounce((targetIps, vol) => {
+        void Promise.all(targetIps.map((ip) => commitSpeakerVolume({ ip, volume: vol })));
+      }, VOLUME_SLIDER_DEBOUNCE_MS),
+    );
+  }
+  return volumeDebouncers.get(key);
+}
+
+function onVolumeSliderInput(speaker, memberIp, rawVolume) {
+  const clampedVolume = clampSonosVolume(rawVolume);
+  if (clampedVolume === null) {
+    return;
+  }
+  const targetIps = isGroupVolumeLinked(speaker.ip)
+    ? speakerGroupMembers(speaker).map((m) => m.ip)
+    : [memberIp];
+  previewSonosVolumes(targetIps, clampedVolume);
+  getVolumeSliderDebouncer(speaker, memberIp)(targetIps, clampedVolume);
+}
+
+async function updateSpeakerVolume(speaker, memberIp, rawVolume) {
+  const clampedVolume = clampSonosVolume(rawVolume);
+  if (clampedVolume === null) {
     return;
   }
 
@@ -374,6 +561,100 @@ function openGroupSettings(speaker) {
 function openSpeakerSettings(speaker) {
   speakerSettingsSpeakerIp.value = speaker.ip;
   speakerSettingsOpen.value = true;
+}
+
+function sonosReadonlyDisplay(row) {
+  const local = speakerSettingsLocal.value;
+  if (!local) {
+    return "—";
+  }
+  const v = local[row.key];
+  if (row.readonlyVariant === "boolean") {
+    return v ? "On" : "Off";
+  }
+  return v === null || v === undefined || v === "" ? "—" : String(v);
+}
+
+function getSonosSliderDebouncer(key) {
+  if (!sliderDebouncers.has(key)) {
+    sliderDebouncers.set(
+      key,
+      debounce((targetIp, setting, value) => {
+        void commitSonosSliderWrite(targetIp, setting, value);
+      }, SONOS_SLIDER_DEBOUNCE_MS),
+    );
+  }
+  return sliderDebouncers.get(key);
+}
+
+async function commitSonosSliderWrite(ip, setting, value) {
+  if (!ip || ip !== speakerSettingsSpeakerIp.value || !speakerSettingsLocal.value) {
+    return;
+  }
+  const before = { ...speakerSettingsLocal.value };
+  try {
+    const res = await updateSpeakerSetting(ip, setting, value);
+    if (res && typeof res.value !== "undefined" && res.value !== null) {
+      speakerSettingsLocal.value = {
+        ...speakerSettingsLocal.value,
+        [setting]: res.value,
+      };
+    }
+  } catch (error) {
+    speakerSettingsLocal.value = before;
+    notifyError("Could not update speaker setting", error);
+    try {
+      const data = await loadSpeakerSettings(ip);
+      speakerSettingsLocal.value = { ...data.settings };
+      speakerSettingsMetaName.value = data.speaker_name || speakerSettingsMetaName.value;
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function onSonosSliderChange(row, raw) {
+  if (!speakerSettingsLocal.value || row.type !== "slider") {
+    return;
+  }
+  const n = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
+  if (!Number.isFinite(n)) {
+    return;
+  }
+  const clamped = Math.round(Math.max(row.min, Math.min(row.max, n)));
+  speakerSettingsLocal.value = {
+    ...speakerSettingsLocal.value,
+    [row.key]: clamped,
+  };
+  getSonosSliderDebouncer(row.key)(speakerSettingsSpeakerIp.value, row.key, clamped);
+}
+
+async function onSonosBoolChange(key, checked) {
+  const ip = speakerSettingsSpeakerIp.value;
+  if (!ip || !speakerSettingsLocal.value) {
+    return;
+  }
+  const before = speakerSettingsLocal.value[key];
+  speakerSettingsLocal.value = {
+    ...speakerSettingsLocal.value,
+    [key]: !!checked,
+  };
+  try {
+    await updateSpeakerSetting(ip, key, !!checked);
+  } catch (error) {
+    speakerSettingsLocal.value = {
+      ...speakerSettingsLocal.value,
+      [key]: before,
+    };
+    notifyError("Could not update speaker setting", error);
+    try {
+      const data = await loadSpeakerSettings(ip);
+      speakerSettingsLocal.value = { ...data.settings };
+      speakerSettingsMetaName.value = data.speaker_name || speakerSettingsMetaName.value;
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function speakerMenuItems(speaker) {
