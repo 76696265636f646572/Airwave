@@ -39,12 +39,31 @@ function writeStoredLocalVolume(volume) {
 export function useLocalPlayback(audioRef) {
   const { playbackState } = usePlaybackState();
   const wantsLocalPlayback = ref(false);
+  /** Mirrors the audio element's paused/ended state so Vue updates when OS / Media Session controls the element. */
+  const localAudioPaused = ref(true);
   const storedVolume = readStoredLocalVolume();
   const localVolume = ref(storedVolume ?? DEFAULT_LOCAL_VOLUME);
   const isMuted = ref(localVolume.value <= 0);
   const previousVolumeBeforeMute = ref(localVolume.value > 0 ? localVolume.value : DEFAULT_LOCAL_VOLUME);
 
-  const isLocalPlaybackActive = computed(() => wantsLocalPlayback.value);
+  function syncLocalAudioPausedFromElement() {
+    const audio = audioRef.value;
+    if (!audio) {
+      localAudioPaused.value = true;
+      return;
+    }
+    localAudioPaused.value = audio.paused || audio.ended;
+  }
+
+  const isLocalPlaybackActive = computed(() => {
+    const local = localPlaybackStatus();
+    return local.isLocalPlaybackActive && !local.isLocalPlaybackPaused;
+  });
+
+  const localPlaybackSessionDeps = computed(() => ({
+    wantsLocal: wantsLocalPlayback.value,
+    audioPaused: localAudioPaused.value,
+  }));
 
   function applyAudioVolume() {
     if (!audioRef.value) return;
@@ -94,6 +113,7 @@ export function useLocalPlayback(audioRef) {
     } catch {
       stopLocalPlayback();
     }
+    syncLocalAudioPausedFromElement();
   }
 
   function stopLocalPlayback() {
@@ -104,6 +124,43 @@ export function useLocalPlayback(audioRef) {
     audioRef.value.pause();
     audioRef.value.removeAttribute("src");
     audioRef.value.load();
+    syncLocalAudioPausedFromElement();
+  }
+
+  function pauseLocalPlayback() {
+    if (!wantsLocalPlayback.value || !audioRef.value) return;
+    audioRef.value.pause();
+    syncLocalAudioPausedFromElement();
+  }
+
+  function localPlaybackStatus() {
+    const audio = audioRef.value;
+    const active = wantsLocalPlayback.value;
+    const paused = !audio || localAudioPaused.value;
+    const playing = Boolean(audio && active && !paused);
+    return {
+      isLocalPlaybackActive: active,
+      isLocalPlaybackPaused: paused,
+      isLocalPlaybackPlaying: playing,
+      isLocalPlaybackStopped: !active || !audio?.src,
+    };
+  }
+
+  async function resumeLocalPlayback() {
+    if (!wantsLocalPlayback.value || !audioRef.value || !playbackState.value.stream_url) return;
+
+    const oldValue = playbackState.value.stream_url;
+    // Reset the audio element to its initial state.
+    audioRef.value.removeAttribute("src");
+    audioRef.value.load();
+    audioRef.value.src = oldValue;
+    applyAudioVolume();
+    try {
+      await audioRef.value.play();
+    } catch {
+      stopLocalPlayback();
+    }
+    syncLocalAudioPausedFromElement();
   }
 
   watch(
@@ -124,14 +181,32 @@ export function useLocalPlayback(audioRef) {
       } catch {
         stopLocalPlayback();
       }
+      syncLocalAudioPausedFromElement();
     }
   );
+
+  let detachAudioStateListeners = () => {};
 
   watch(
     audioRef,
     (audio) => {
-      if (!audio) return;
+      detachAudioStateListeners();
+      detachAudioStateListeners = () => {};
+      if (!audio) {
+        localAudioPaused.value = true;
+        return;
+      }
       applyAudioVolume();
+      const onAudioStateEvent = () => syncLocalAudioPausedFromElement();
+      syncLocalAudioPausedFromElement();
+      audio.addEventListener("play", onAudioStateEvent);
+      audio.addEventListener("pause", onAudioStateEvent);
+      audio.addEventListener("ended", onAudioStateEvent);
+      detachAudioStateListeners = () => {
+        audio.removeEventListener("play", onAudioStateEvent);
+        audio.removeEventListener("pause", onAudioStateEvent);
+        audio.removeEventListener("ended", onAudioStateEvent);
+      };
     },
     { immediate: true }
   );
@@ -141,12 +216,17 @@ export function useLocalPlayback(audioRef) {
   }
 
   onUnmounted(() => {
+    detachAudioStateListeners();
     stopLocalPlayback();
   });
 
   return {
     startLocalPlayback,
     stopLocalPlayback,
+    pauseLocalPlayback,
+    resumeLocalPlayback,
+    localPlaybackStatus,
+    localPlaybackSessionDeps,
     isLocalPlaybackActive,
     localVolume,
     isMuted,

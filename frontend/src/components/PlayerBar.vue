@@ -205,12 +205,12 @@ import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, fullScreenPlayerOpen, useUiStat
 const {
   startLocalPlayback,
   stopLocalPlayback,
-  isLocalPlaybackActive,
   localVolume,
   isMuted,
   setLocalVolume,
   toggleMuted,
-} = inject("localPlayback");
+  isLocalPlaybackActive,
+} = inject("localPlayback"); 
 
 const { isMobile } = useBreakpoint();
 const { playbackState } = usePlaybackState();
@@ -219,6 +219,7 @@ const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnable
 const playPauseIcon = computed(() =>
   playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
+
 const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";

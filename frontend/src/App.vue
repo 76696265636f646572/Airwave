@@ -145,6 +145,10 @@ const audioEl = ref(null);
 const {
   startLocalPlayback,
   stopLocalPlayback,
+  pauseLocalPlayback,
+  resumeLocalPlayback,
+  localPlaybackStatus,
+  localPlaybackSessionDeps,
   isLocalPlaybackActive,
   localVolume,
   isMuted,
@@ -155,11 +159,22 @@ const {
 provide("localPlayback", {
   startLocalPlayback,
   stopLocalPlayback,
+  pauseLocalPlayback,
+  resumeLocalPlayback,
+  localPlaybackStatus,
   isLocalPlaybackActive,
   localVolume,
   isMuted,
   setLocalVolume,
   toggleMuted,
+});
+
+useMediaSession({
+  pauseLocalPlayback,
+  resumeLocalPlayback,
+  stopLocalPlayback,
+  localPlaybackStatus,
+  localPlaybackSessionDeps,
 });
 
 const {
@@ -175,7 +190,6 @@ initializeNotifications(useToast());
 onMounted(async () => {
   initializeTheme();
   initializeUiState(route);
-  useMediaSession();
   await Promise.allSettled([initializeLibraryState(), initializePlaybackState(), initializeSonosState()]);
 });
 </script>

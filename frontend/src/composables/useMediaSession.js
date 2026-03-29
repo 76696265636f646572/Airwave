@@ -1,4 +1,4 @@
-import { watch } from "vue";
+import { nextTick, watch } from "vue";
 
 import { useLibraryState } from "./useLibraryState";
 import { usePlaybackState } from "./usePlaybackState";
@@ -16,13 +16,16 @@ function buildArtwork(thumbnailUrl) {
   }));
 }
 
-export function useMediaSession() {
+export function useMediaSession(localPlayback) {
   if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
     return;
   }
 
+  const { pauseLocalPlayback, resumeLocalPlayback, stopLocalPlayback, localPlaybackStatus, localPlaybackSessionDeps } =
+    localPlayback ?? {};
+
   const { playbackState } = usePlaybackState();
-  const { togglePause, skipCurrent, previousTrack, seekToPercent } = useLibraryState();
+  const { skipCurrent, previousTrack, seekToPercent, togglePause } = useLibraryState();
 
   function updatePositionState() {
     if (!("setPositionState" in navigator.mediaSession)) return;
@@ -54,14 +57,40 @@ export function useMediaSession() {
       artwork: buildArtwork(state?.now_playing_thumbnail_url),
     });
 
-    const isPlaying = state?.mode === "playing" && !state?.paused;
+    let isPlaying = state?.mode === "playing" && !state?.paused;
+    if (localPlaybackStatus) {
+      const local = localPlaybackStatus();
+      if (local.isLocalPlaybackActive) {
+        if (local.isLocalPlaybackPaused) {
+          isPlaying = false;
+        } else {
+          isPlaying = true;
+        }
+      } else {
+        isPlaying = false;
+      }
+    }
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-
     updatePositionState();
   }
 
-  navigator.mediaSession.setActionHandler("play", () => togglePause());
-  navigator.mediaSession.setActionHandler("pause", () => togglePause());
+  navigator.mediaSession.setActionHandler("play", () => {
+    if (localPlaybackStatus?.()?.isLocalPlaybackActive) {
+      void Promise.resolve(resumeLocalPlayback?.()).finally(() => {
+        nextTick(updateMetadata);
+      });
+    } else {
+      togglePause();
+    }
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    if (localPlaybackStatus?.()?.isLocalPlaybackActive) {
+      pauseLocalPlayback?.();
+      nextTick(updateMetadata);
+    } else {
+      togglePause();
+    }
+  });
   navigator.mediaSession.setActionHandler("previoustrack", () => previousTrack());
   navigator.mediaSession.setActionHandler("nexttrack", () => skipCurrent());
 
@@ -102,10 +131,18 @@ export function useMediaSession() {
   }
 
   try {
-    navigator.mediaSession.setActionHandler("stop", () => togglePause());
+    navigator.mediaSession.setActionHandler("stop", () => {
+      if (localPlaybackStatus?.()?.isLocalPlaybackActive) {
+        stopLocalPlayback?.();
+        nextTick(updateMetadata);
+      } else {
+        togglePause();
+      }
+    });
   } catch {
     // stop is not supported (e.g. Chrome < 77)
   }
 
-  watch(playbackState, updateMetadata, { immediate: true, deep: true });
+  const mediaSessionWatchSources = localPlaybackSessionDeps ? [playbackState, localPlaybackSessionDeps] : [playbackState];
+  watch(mediaSessionWatchSources, updateMetadata, { immediate: true, deep: true });
 }
