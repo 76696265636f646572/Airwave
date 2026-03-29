@@ -16,13 +16,15 @@ function buildArtwork(thumbnailUrl) {
   }));
 }
 
-export function useMediaSession() {
+export function useMediaSession(localPlayback) {
   if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
     return;
   }
 
+  const { pauseLocalPlayback, resumeLocalPlayback, stopLocalPlayback, localPlaybackStatus } = localPlayback ?? {};
+
   const { playbackState } = usePlaybackState();
-  const { togglePause, skipCurrent, previousTrack, seekToPercent } = useLibraryState();
+  const { skipCurrent, previousTrack, seekToPercent } = useLibraryState();
 
   function updatePositionState() {
     if (!("setPositionState" in navigator.mediaSession)) return;
@@ -54,14 +56,24 @@ export function useMediaSession() {
       artwork: buildArtwork(state?.now_playing_thumbnail_url),
     });
 
-    const isPlaying = state?.mode === "playing" && !state?.paused;
+    let isPlaying = state?.mode === "playing" && !state?.paused;
+    if (localPlaybackStatus) {
+      const local = localPlaybackStatus();
+      if (local.isLocalPlaybackActive) {
+        isPlaying = local.isLocalPlaybackPlaying;
+      }
+    }
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
 
     updatePositionState();
   }
 
-  navigator.mediaSession.setActionHandler("play", () => togglePause());
-  navigator.mediaSession.setActionHandler("pause", () => togglePause());
+  navigator.mediaSession.setActionHandler("play", () => {
+    resumeLocalPlayback?.();
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    pauseLocalPlayback?.();
+  });
   navigator.mediaSession.setActionHandler("previoustrack", () => previousTrack());
   navigator.mediaSession.setActionHandler("nexttrack", () => skipCurrent());
 
@@ -102,7 +114,9 @@ export function useMediaSession() {
   }
 
   try {
-    navigator.mediaSession.setActionHandler("stop", () => togglePause());
+    navigator.mediaSession.setActionHandler("stop", () => {
+      stopLocalPlayback?.();
+    });
   } catch {
     // stop is not supported (e.g. Chrome < 77)
   }

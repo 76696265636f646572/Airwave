@@ -106,6 +106,38 @@ export function useLocalPlayback(audioRef) {
     audioRef.value.load();
   }
 
+  function pauseLocalPlayback() {
+    if (!wantsLocalPlayback.value || !audioRef.value) return;
+    audioRef.value.pause();
+    
+  }
+  
+  function localPlaybackStatus() {
+    const audio = audioRef.value;
+    const active = wantsLocalPlayback.value;
+    const playing = Boolean(audio && active && !audio.paused && !audio.ended);
+    return {
+      isLocalPlaybackActive: active,
+      isLocalPlaybackPaused: !audio || audio.paused,
+      isLocalPlaybackPlaying: playing,
+      isLocalPlaybackStopped: !active || !audio?.src,
+    };
+  }
+
+  async function resumeLocalPlayback() {
+    if (!playbackState.value.stream_url) return;
+
+    const oldValue = playbackState.value.stream_url;
+    // Reset the audio element to its initial state.
+    if (audioRef.value) {
+      audioRef.value.removeAttribute("src");
+      audioRef.value.load();
+    }
+    audioRef.value.src = oldValue;
+    applyAudioVolume();
+    await audioRef.value.play();
+  }
+
   watch(
     () => playbackState.value.stream_url,
     async (newUrl) => {
@@ -147,6 +179,9 @@ export function useLocalPlayback(audioRef) {
   return {
     startLocalPlayback,
     stopLocalPlayback,
+    pauseLocalPlayback,
+    resumeLocalPlayback,
+    localPlaybackStatus,
     isLocalPlaybackActive,
     localVolume,
     isMuted,
