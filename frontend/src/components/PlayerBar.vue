@@ -210,7 +210,7 @@ const {
   setLocalVolume,
   toggleMuted,
   isLocalPlaybackActive,
-} = inject("localPlayback");
+} = inject("localPlayback"); 
 
 const { isMobile } = useBreakpoint();
 const { playbackState } = usePlaybackState();

@@ -21,7 +21,8 @@ export function useMediaSession(localPlayback) {
     return;
   }
 
-  const { pauseLocalPlayback, resumeLocalPlayback, stopLocalPlayback, localPlaybackStatus } = localPlayback ?? {};
+  const { pauseLocalPlayback, resumeLocalPlayback, stopLocalPlayback, localPlaybackStatus, localPlaybackSessionDeps } =
+    localPlayback ?? {};
 
   const { playbackState } = usePlaybackState();
   const { skipCurrent, previousTrack, seekToPercent, togglePause } = useLibraryState();
@@ -138,5 +139,6 @@ export function useMediaSession(localPlayback) {
     // stop is not supported (e.g. Chrome < 77)
   }
 
-  watch(playbackState, updateMetadata, { immediate: true, deep: true });
+  const mediaSessionWatchSources = localPlaybackSessionDeps ? [playbackState, localPlaybackSessionDeps] : [playbackState];
+  watch(mediaSessionWatchSources, updateMetadata, { immediate: true, deep: true });
 }

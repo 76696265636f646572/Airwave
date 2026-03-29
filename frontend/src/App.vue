@@ -148,6 +148,7 @@ const {
   pauseLocalPlayback,
   resumeLocalPlayback,
   localPlaybackStatus,
+  localPlaybackSessionDeps,
   isLocalPlaybackActive,
   localVolume,
   isMuted,
@@ -173,6 +174,7 @@ useMediaSession({
   resumeLocalPlayback,
   stopLocalPlayback,
   localPlaybackStatus,
+  localPlaybackSessionDeps,
 });
 
 const {
