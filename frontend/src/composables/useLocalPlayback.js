@@ -44,7 +44,12 @@ export function useLocalPlayback(audioRef) {
   const isMuted = ref(localVolume.value <= 0);
   const previousVolumeBeforeMute = ref(localVolume.value > 0 ? localVolume.value : DEFAULT_LOCAL_VOLUME);
 
-  const isLocalPlaybackActive = computed(() => wantsLocalPlayback.value);
+  const isLocalPlaybackActive = computed(() => {
+    const local = localPlaybackStatus();
+    const isActive = local.isLocalPlaybackActive;
+    const isPaused = local.isLocalPlaybackPaused;
+    return isActive && !isPaused;
+  });
 
   function applyAudioVolume() {
     if (!audioRef.value) return;

@@ -209,7 +209,7 @@ const {
   isMuted,
   setLocalVolume,
   toggleMuted,
-  localPlaybackStatus
+  isLocalPlaybackActive,
 } = inject("localPlayback");
 
 const { isMobile } = useBreakpoint();
@@ -220,12 +220,6 @@ const playPauseIcon = computed(() =>
   playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
 
-const isLocalPlaybackActive = computed(() => {
-  const local = localPlaybackStatus();
-  const isActive = local.isLocalPlaybackActive;
-  const isPaused = local.isLocalPlaybackPaused;
-  return isActive && !isPaused;
-});
 const repeatIcon = computed(() => (playbackState.value.repeat_mode === "one" ? "i-bi-repeat-1" : "i-bi-repeat"));
 const repeatLabel = computed(() => {
   if (playbackState.value.repeat_mode === "all") return "Repeat all";

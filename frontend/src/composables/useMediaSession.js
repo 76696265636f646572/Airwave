@@ -60,11 +60,16 @@ export function useMediaSession(localPlayback) {
     if (localPlaybackStatus) {
       const local = localPlaybackStatus();
       if (local.isLocalPlaybackActive) {
-        isPlaying = local.isLocalPlaybackPlaying;
+        if (local.isLocalPlaybackPaused) {
+          isPlaying = false;
+        } else {
+          isPlaying = true;
+        }
+      } else {
+        isPlaying = false;
       }
     }
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-
     updatePositionState();
   }
 
