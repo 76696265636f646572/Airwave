@@ -130,17 +130,19 @@ export function useLocalPlayback(audioRef) {
   }
 
   async function resumeLocalPlayback() {
-    if (!playbackState.value.stream_url) return;
+    if (!wantsLocalPlayback.value || !audioRef.value || !playbackState.value.stream_url) return;
 
     const oldValue = playbackState.value.stream_url;
     // Reset the audio element to its initial state.
-    if (audioRef.value) {
-      audioRef.value.removeAttribute("src");
-      audioRef.value.load();
-    }
+    audioRef.value.removeAttribute("src");
+    audioRef.value.load();
     audioRef.value.src = oldValue;
     applyAudioVolume();
-    await audioRef.value.play();
+    try {
+      await audioRef.value.play();
+    } catch {
+      stopLocalPlayback();
+    }
   }
 
   watch(
