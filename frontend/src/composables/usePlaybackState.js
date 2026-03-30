@@ -23,7 +23,17 @@ let initialized = false;
 
 function applyPlaybackState(nextState) {
   if (!nextState || typeof nextState !== "object") return;
+  if (nextState?.stream_url) {
+    nextState.stream_url = normalizeStreamUrl(nextState.stream_url);
+  }
   playbackState.value = nextState;
+}
+
+function normalizeStreamUrl(url) {
+  const streamUrl = new URL(url);
+  streamUrl.hostname = window.location.hostname;
+  streamUrl.port = window.location.port;
+  return streamUrl.toString();
 }
 
 function startPlaybackTicker() {
@@ -46,7 +56,13 @@ function startPlaybackTicker() {
 }
 
 async function refreshPlaybackState() {
-  playbackState.value = await fetchJson("/api/state");
+  const nextState = await fetchJson("/api/state");
+
+  if (nextState?.stream_url) {
+    nextState.stream_url = normalizeStreamUrl(nextState.stream_url);
+  }
+
+  playbackState.value = nextState;
 }
 
 export async function initializePlaybackState() {
