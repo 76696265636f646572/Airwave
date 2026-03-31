@@ -101,7 +101,6 @@
       <audio
         ref="audioEl"
         class="hidden"
-        :src="playbackState.stream_url"
         preload="none"
       />
     </div>
@@ -126,7 +125,7 @@ import { useLocalPlayback } from "./composables/useLocalPlayback";
 import { useMediaSession } from "./composables/useMediaSession";
 import { initializeLibraryState } from "./composables/useLibraryState";
 import { initializeNotifications } from "./composables/useNotifications";
-import { initializePlaybackState, usePlaybackState } from "./composables/usePlaybackState";
+import { initializePlaybackState } from "./composables/usePlaybackState";
 import { initializeSonosState } from "./composables/useSonosState";
 import {
   MOBILE_VIEW_HOME,
@@ -140,7 +139,6 @@ import { initializeTheme } from "./composables/useTheme";
 
 const route = useRoute();
 const { isMobile } = useBreakpoint();
-const { playbackState } = usePlaybackState();
 const audioEl = ref(null);
 const {
   startLocalPlayback,

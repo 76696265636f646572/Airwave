@@ -787,8 +787,6 @@ class StreamEngine:
                                     "Notifying state changed (attempt_chunks_sent=%s)",
                                     attempt_chunks_sent,
                                 )
-                            if attempt_chunks_sent % 10 == 0:
-                                self._notify_state_changed()
                             attempt_bytes_sent += len(chunk)
                             total_chunks_sent += 1
                             total_bytes_sent += len(chunk)
