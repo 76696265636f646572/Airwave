@@ -780,10 +780,11 @@ def reorder_sidebar_playlist(payload: SidebarPlaylistReorderRequest, request: Re
 @api_router.post("/playlists/{playlist_id}/play-now")
 def play_playlist_now(playlist_id: UUID, request: Request) -> dict[str, Any]:
     services = _services(request)
+    services["repo"].clear_queue()
+
     result = services["playlist"].queue_playlist(playlist_id)
     item_ids = result.get("item_ids") or []
     if item_ids:
-        services["repo"].move_item_to_front(item_ids[0])
         services["engine"].skip_current()
     _publish_ui_snapshot(request)
     return result
