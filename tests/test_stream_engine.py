@@ -294,6 +294,42 @@ def test_paused_cycle_publishes_silence_until_resume(tmp_path):
     assert all(chunk == b"\x00" * 8 for chunk in published)
 
 
+def test_playback_bridges_silence_before_first_track_chunk(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/transition-silence.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [NewQueueItem(source_url="u", normalized_url="u", source_type="video", title="Song")]
+    )
+    dequeued = repo.dequeue_next()
+    assert dequeued is not None
+
+    class SlowStartYtDlp(FakeYtDlp):
+        def spawn_audio_stream(self, url: str) -> FakeProc:
+            import time
+
+            time.sleep(0.03)
+            return super().spawn_audio_stream(url)
+
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=SlowStartYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        chunk_size=2,
+        queue_poll_seconds=0.01,
+    )
+    published: list[bytes] = []
+    engine.hub.publish = published.append  # type: ignore[method-assign]
+    engine.hub.subscriber_count = lambda: 1  # type: ignore[method-assign]
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - regression coverage
+
+    assert published != []
+    first_audio_index = next(index for index, chunk in enumerate(published) if chunk != b"\x00" * len(chunk))
+    assert first_audio_index > 0
+    assert all(chunk == b"\x00" * len(chunk) for chunk in published[:first_audio_index])
+    assert published[first_audio_index:] == [b"ab", b"c1", b"23"]
+
+
 def test_shuffle_reorders_queue_and_restores_previous_order(tmp_path, monkeypatch):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/shuffle.db")
     repo.init_db()
