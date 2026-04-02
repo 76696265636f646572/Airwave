@@ -195,9 +195,6 @@
 
 <script setup>
 import { computed, inject } from "vue";
-import { debounce } from "../composables/useDebounce";
-import { formatDuration } from "../composables/useDuration";
-import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaybackState } from "../composables/usePlaybackState";
 import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, fullScreenPlayerOpen, useUiState } from "../composables/useUiState";
@@ -212,7 +209,6 @@ const {
   isLocalPlaybackActive,
 } = inject("localPlayback"); 
 
-const { isMobile } = useBreakpoint();
 const { playbackState } = usePlaybackState();
 const { sidebarView } = useUiState();
 const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
@@ -244,11 +240,10 @@ function cycleRepeatMode() {
   setRepeatMode(nextMode);
 }
 
-const VOLUME_DEBOUNCE_MS = 100;
-const onLocalVolumeChange = debounce((value) => {
+function onLocalVolumeChange(value) {
   const sliderValue = Array.isArray(value) ? value[0] : value;
   const nextPercent = Number(sliderValue ?? 0);
   if (!Number.isFinite(nextPercent)) return;
   setLocalVolume(nextPercent / 100);
-}, VOLUME_DEBOUNCE_MS);
+}
 </script>
