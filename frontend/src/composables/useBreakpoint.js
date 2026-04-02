@@ -12,7 +12,7 @@ function readIsMobile() {
 function readIsTabletLayout() {
   if (typeof window === "undefined") return false;
   const w = window.innerWidth;
-  return w >= 768 && w < XL_MIN_WIDTH;
+  return w >= (MOBILE_MAX_WIDTH + 1) && w < XL_MIN_WIDTH;
 }
 
 export function useBreakpoint() {
