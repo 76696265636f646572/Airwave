@@ -47,8 +47,9 @@
     <!-- Desktop: full bar with progress and all controls -->
     <div class="hidden grid items-center gap-3 md:grid md:grid-cols-[minmax(0,1fr)_minmax(340px,560px)_minmax(0,1fr)]">
       <div
-        class="player-bar-strip flex min-w-0 cursor-pointer items-center gap-3"  @click="onStripClick"
->
+        class="player-bar-strip flex min-w-0 cursor-pointer items-center gap-3"
+        @click="onStripClick"
+      >
         <div class="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-neutral-700 surface-elevated">
           <img
             v-if="playbackState.now_playing_thumbnail_url"
@@ -116,21 +117,21 @@
           <div class="hidden items-center gap-2 md:flex">
             <UButton
               type="button"
-              :color="sidebarView === SIDEBAR_QUEUE_VIEW ? 'primary' : 'neutral'"
-              :variant="sidebarView === SIDEBAR_QUEUE_VIEW ? 'soft' : 'ghost'"
+              :color="queueSidebarButtonActive ? 'primary' : 'neutral'"
+              :variant="queueSidebarButtonActive ? 'soft' : 'ghost'"
               icon="i-bi-music-note-list"
               aria-label="Show queue and history"
               class="cursor-pointer"
-              @click="sidebarView = SIDEBAR_QUEUE_VIEW"
+              @click="toggleRightSidebar(SIDEBAR_QUEUE_VIEW)"
             />
             <UButton
               type="button"
-              :color="sidebarView === SIDEBAR_SONOS_VIEW ? 'primary' : 'neutral'"
-              :variant="sidebarView === SIDEBAR_SONOS_VIEW ? 'soft' : 'ghost'"
+              :color="sonosSidebarButtonActive ? 'primary' : 'neutral'"
+              :variant="sonosSidebarButtonActive ? 'soft' : 'ghost'"
               icon="i-bi-speaker-fill"
               aria-label="Show Sonos speakers"
               class="cursor-pointer"
-              @click="sidebarView = SIDEBAR_SONOS_VIEW"
+              @click="toggleRightSidebar(SIDEBAR_SONOS_VIEW)"
             />
           </div>
         <a
@@ -195,6 +196,7 @@
 
 <script setup>
 import { computed, inject } from "vue";
+import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaybackState } from "../composables/usePlaybackState";
 import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, fullScreenPlayerOpen, useUiState } from "../composables/useUiState";
@@ -210,8 +212,25 @@ const {
 } = inject("localPlayback"); 
 
 const { playbackState } = usePlaybackState();
-const { sidebarView } = useUiState();
+const { isTabletLayout } = useBreakpoint();
+const { sidebarView, rightSidebarOpen } = useUiState();
 const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
+
+/** Tablet: highlight only while the overlay is open; desktop: highlight matches visible sidebar. */
+const queueSidebarButtonActive = computed(() => {
+  if (isTabletLayout.value) {
+    return rightSidebarOpen.value && sidebarView.value === SIDEBAR_QUEUE_VIEW;
+  }
+  return sidebarView.value === SIDEBAR_QUEUE_VIEW;
+});
+
+const sonosSidebarButtonActive = computed(() => {
+  if (isTabletLayout.value) {
+    return rightSidebarOpen.value && sidebarView.value === SIDEBAR_SONOS_VIEW;
+  }
+  return sidebarView.value === SIDEBAR_SONOS_VIEW;
+});
+
 const playPauseIcon = computed(() =>
   playbackState.value.mode === "playing" && !playbackState.value.paused ? "i-bi-pause-fill" : "i-bi-play-fill"
 );
@@ -228,6 +247,19 @@ const localVolumeIcon = computed(() => {
   if (localVolume.value < 0.5) return "i-bi-volume-down-fill";
   return "i-bi-volume-up-fill";
 });
+
+function toggleRightSidebar(view) {
+  if (isTabletLayout.value) {
+    if (rightSidebarOpen.value && sidebarView.value === view) {
+      rightSidebarOpen.value = false;
+      return;
+    }
+    sidebarView.value = view;
+    rightSidebarOpen.value = true;
+    return;
+  }
+  sidebarView.value = view;
+}
 
 function onStripClick() {
   fullScreenPlayerOpen.value = true;
