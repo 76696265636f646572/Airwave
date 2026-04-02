@@ -1,6 +1,11 @@
 <template>
   <UApp :toaster="{ position: 'bottom-right' }">
-    <div class="app-shell min-h-dvh md:h-dvh overflow-y-auto md:overflow-hidden p-3 text-neutral-100 flex flex-col gap-3">
+    <template v-if="isFullScreenPlayerRoute">
+      <RouterView v-slot="{ Component }">
+        <component :is="Component" />
+      </RouterView>
+    </template>
+    <div v-else class="app-shell min-h-dvh md:h-dvh overflow-y-auto md:overflow-hidden p-3 text-neutral-100 flex flex-col gap-3">
       <TopBar />
 
       <div
@@ -102,24 +107,22 @@
       <!-- Desktop: player in flow -->
       <PlayerBar v-else />
 
-      <FullScreenPlayer />
       <DuplicateImportModal />
-
-      <audio
-        ref="audioEl"
-        class="hidden"
-        preload="none"
-      />
     </div>
+
+    <audio
+      ref="audioEl"
+      class="hidden"
+      preload="none"
+    />
   </UApp>
 </template>
 
 <script setup>
-import { onMounted, provide, ref } from "vue";
+import { computed, onMounted, provide, ref } from "vue";
 import { useRoute } from "vue-router";
 
 import DuplicateImportModal from "./components/DuplicateImportModal.vue";
-import FullScreenPlayer from "./components/FullScreenPlayer.vue";
 import HistoryPanel from "./components/HistoryPanel.vue";
 import MobileNavBar from "./components/MobileNavBar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
@@ -145,6 +148,7 @@ import {
 import { initializeTheme } from "./composables/useTheme";
 
 const route = useRoute();
+const isFullScreenPlayerRoute = computed(() => route.path === "/fullscreen-player" || route.path === "/fullscreen-player/");
 const { isMobile } = useBreakpoint();
 const audioEl = ref(null);
 const {

@@ -196,10 +196,11 @@
 
 <script setup>
 import { computed, inject } from "vue";
+import { useRouter } from "vue-router";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaybackState } from "../composables/usePlaybackState";
-import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, fullScreenPlayerOpen, useUiState } from "../composables/useUiState";
+import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, useUiState } from "../composables/useUiState";
 
 const {
   startLocalPlayback,
@@ -211,6 +212,7 @@ const {
   isLocalPlaybackActive,
 } = inject("localPlayback"); 
 
+const router = useRouter();
 const { playbackState } = usePlaybackState();
 const { isTabletLayout } = useBreakpoint();
 const { sidebarView, rightSidebarOpen } = useUiState();
@@ -262,7 +264,7 @@ function toggleRightSidebar(view) {
 }
 
 function onStripClick() {
-  fullScreenPlayerOpen.value = true;
+  router.push("/fullscreen-player");
 }
 
 function cycleRepeatMode() {

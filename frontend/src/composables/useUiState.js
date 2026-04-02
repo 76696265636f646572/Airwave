@@ -25,9 +25,6 @@ export const MOBILE_VIEW_QUEUE = "queue";
 export const MOBILE_VIEW_SONOS = "sonos";
 export const mobileView = ref(MOBILE_VIEW_HOME);
 
-/** Mobile only: true when the full-screen player overlay is open. */
-export const fullScreenPlayerOpen = ref(false);
-
 let initialized = false;
 
 function readStoredSetting(key) {
@@ -135,7 +132,6 @@ export function useUiState() {
     activePlaylistId,
     queueSidebarTabs,
     mobileView,
-    fullScreenPlayerOpen,
     rightSidebarOpen,
     initializeUiState,
     onSearchTextChange,
