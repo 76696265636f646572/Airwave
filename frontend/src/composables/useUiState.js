@@ -81,6 +81,8 @@ async function onSearchSubmit(router, route, query) {
 
 async function selectPlaylist(router, playlistId) {
   activePlaylistId.value = playlistId;
+  // Mobile main area only renders RouterView in the home pane; playlist detail lives in RouterView.
+  mobileView.value = MOBILE_VIEW_HOME;
   try {
     const path = playlistId ? `/playlist/${playlistId}` : "/";
     await router.push({ path });
