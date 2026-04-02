@@ -53,6 +53,8 @@ def test_get_single_json_passes_cookies_flag(monkeypatch):
     client = _client()
     payload = client.get_single_json("https://www.youtube.com/watch?v=abc", cookie_file="/tmp/youtube.cookies")
     assert payload["id"] == "abc"
+    assert "-f" in captured["cmd"]
+    assert "bestaudio/best" in captured["cmd"]
     assert "--cookies" in captured["cmd"]
     assert "/tmp/youtube.cookies" in captured["cmd"]
 

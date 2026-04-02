@@ -49,7 +49,6 @@ def test_is_playlist_url_start_radio(service):
 class _CaptureClient:
     resolved_values: list[tuple[str, str | None]] = field(default_factory=list)
     single_calls: list[tuple[str, str | None]] = field(default_factory=list)
-    stream_calls: list[tuple[str, str | None]] = field(default_factory=list)
     spawn_calls: list[tuple[str, str | None]] = field(default_factory=list)
     search_calls: list[tuple[str, str, int, str | None]] = field(default_factory=list)
     playlist_calls: list[tuple[str, str | None]] = field(default_factory=list)
@@ -72,6 +71,7 @@ class _CaptureClient:
                 "duration": 120,
                 "thumbnail": "https://img.youtube.com/abc.jpg",
                 "webpage_url": "https://www.youtube.com/watch?v=abc",
+                "url": "https://stream.example/audio.mp3",
             }
         if host == "soundcloud.com" or host.endswith(".soundcloud.com"):
             return {
@@ -80,6 +80,7 @@ class _CaptureClient:
                 "uploader": "SoundCloud Artist",
                 "duration": 240,
                 "webpage_url": "https://soundcloud.com/artist/track",
+                "url": "https://stream.example/audio.mp3",
             }
         return {
             "id": "55",
@@ -87,11 +88,8 @@ class _CaptureClient:
             "uploader": "Mix DJ",
             "duration": 3600,
             "webpage_url": "https://www.mixcloud.com/user/show/",
+            "url": "https://stream.example/audio.mp3",
         }
-
-    def get_stream_url(self, url: str, cookie_file: str | None = None) -> str:
-        self.stream_calls.append((url, cookie_file))
-        return "https://stream.example/audio.mp3"
 
     def spawn_audio_stream(self, url: str, cookie_file: str | None = None):
         self.spawn_calls.append((url, cookie_file))
@@ -239,7 +237,6 @@ def test_resolve_video_force_refresh_bypasses_cached_stream_url(service):
     assert second is first
     assert refreshed is not first
     assert len(capture_client.single_calls) == 2
-    assert len(capture_client.stream_calls) == 2
 
 
 def test_resolve_video_cache_is_partitioned_by_cookie_context(tmp_path):
@@ -262,10 +259,6 @@ def test_resolve_video_cache_is_partitioned_by_cookie_context(tmp_path):
 
     assert first is not second
     assert capture_client.single_calls == [
-        ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-one.cookies"),
-        ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-two.cookies"),
-    ]
-    assert capture_client.stream_calls == [
         ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-one.cookies"),
         ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-two.cookies"),
     ]
