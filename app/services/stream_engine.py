@@ -361,6 +361,7 @@ class StreamEngine:
             return
         source_process = self.yt_dlp_service.spawn_audio_stream(source_url)
         temp_path = os.path.join(self._prefetched_audio_dir, f"{queue_item_id}.bin")
+        logger.debug("Prefetching audio for item %s from %s to %s", queue_item_id, source_url, temp_path)
         try:
             with open(temp_path, "wb") as destination:
                 while True:
@@ -379,8 +380,10 @@ class StreamEngine:
             if not os.path.exists(temp_path) or os.path.getsize(temp_path) <= 0:
                 raise YtDlpError("yt-dlp prefetch returned empty audio stream")
             self._cache_prefetched_audio_path(queue_item_id, temp_path)
+            logger.debug("Prefetched audio for item %s from %s to %s successfully", queue_item_id, source_url, temp_path)
         except Exception:
             self._remove_prefetched_audio_file(temp_path)
+            logger.debug("Failed prefetching audio for item %s from %s to %s", queue_item_id, source_url, temp_path)
             raise
         finally:
             self._terminate_process(source_process)
@@ -569,6 +572,52 @@ class StreamEngine:
         self._terminate_process(transcode_process)
         self._terminate_process(source_process)
 
+    def _start_transition_silence(self) -> tuple[threading.Event | None, threading.Thread | None]:
+        if self._stop_event.is_set() or self._skip_event.is_set():
+            return None, None
+        stop_event = threading.Event()
+
+        def _publish_silence() -> None:
+            while not stop_event.is_set() and not self._stop_event.is_set():
+                if self._skip_event.is_set():
+                    return
+                try:
+                    process = self.ffmpeg_pipeline.spawn_silence()
+                except FfmpegError as exc:
+                    logger.error("%s", exc)
+                    return
+                try:
+                    while not stop_event.is_set() and not self._stop_event.is_set():
+                        if self._skip_event.is_set():
+                            return
+                        chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
+                        if not chunk:
+                            break
+                        if stop_event.is_set() or self._stop_event.is_set() or self._skip_event.is_set():
+                            return
+                        self.hub.publish(chunk)
+                        self._record_streamed_chunk(len(chunk))
+                finally:
+                    self._terminate_process(process)
+
+        worker = threading.Thread(
+            target=_publish_silence,
+            daemon=True,
+            name="stream-engine-transition-silence",
+        )
+        worker.start()
+        return stop_event, worker
+
+    @staticmethod
+    def _stop_transition_silence(
+        stop_event: threading.Event | None,
+        worker: threading.Thread | None,
+    ) -> None:
+        if stop_event is not None:
+            stop_event.set()
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=1)
+
     def _set_playback_offset_seconds(self, seconds: float) -> None:
         offset = max(0.0, float(seconds))
         self.state.started_at_epoch_seconds = time.time() - offset
@@ -710,7 +759,10 @@ class StreamEngine:
                 for attempt in range(1, total_attempts + 1):
                     if self._stop_event.is_set():
                         raise InterruptedError("stop")
+                    transition_silence_stop: threading.Event | None = None
+                    transition_silence_worker: threading.Thread | None = None
                     try:
+                        transition_silence_stop, transition_silence_worker = self._start_transition_silence()
                         resolved = self._resolve_track_for_item(queue_item, force_refresh=attempt > 1)
                         resolved_duration_seconds = resolved.duration_seconds
                         probe_source = getattr(self.ffmpeg_pipeline, "probe_source", None)
@@ -777,6 +829,10 @@ class StreamEngine:
                                     else ""
                                 )
                                 break
+                            if attempt_chunks_sent == 0:
+                                self._stop_transition_silence(transition_silence_stop, transition_silence_worker)
+                                transition_silence_stop = None
+                                transition_silence_worker = None
                             self.hub.publish(chunk)
                             self._record_streamed_chunk(len(chunk))
                             attempt_chunks_sent += 1
@@ -901,6 +957,7 @@ class StreamEngine:
                         )
                         time.sleep(min(0.5, self.queue_poll_seconds))
                     finally:
+                        self._stop_transition_silence(transition_silence_stop, transition_silence_worker)
                         self._terminate_active_process()
                         self._set_active_processes(None, None)
             except InterruptedError as exc:

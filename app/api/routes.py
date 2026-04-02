@@ -167,6 +167,16 @@ def _stream_url_from_base(settings: Any, base_url: str) -> str:
     return settings.stream_url_for(base_url)
 
 
+def _prefer_youtube_hq_thumbnail(url: str | None) -> str | None:
+    """Map maxres YouTube CDN thumbs to hqdefault (yt-dlp often returns maxresdefault)."""
+    if not url or "maxresdefault" not in url:
+        return url
+    host = (urlparse(url).netloc or "").lower()
+    if "ytimg.com" not in host and host not in {"img.youtube.com", "www.img.youtube.com"}:
+        return url
+    return url.replace("maxresdefault.jpg", "hqdefault.jpg").replace("maxresdefault.webp", "hqdefault.webp")
+
+
 def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
     progress = engine.playback_progress()
     return {
@@ -178,7 +188,9 @@ def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
         "now_playing_id": engine.state.now_playing_id,
         "now_playing_title": engine.state.now_playing_title,
         "now_playing_channel": getattr(engine.state, "now_playing_channel", None),
-        "now_playing_thumbnail_url": getattr(engine.state, "now_playing_thumbnail_url", None),
+        "now_playing_thumbnail_url": _prefer_youtube_hq_thumbnail(
+            getattr(engine.state, "now_playing_thumbnail_url", None)
+        ),
         "now_playing_is_live": getattr(engine.state, "now_playing_is_live", False),
         "stream_url": stream_url,
         **progress,
