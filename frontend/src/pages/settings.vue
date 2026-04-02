@@ -118,6 +118,6 @@ const showResponsiveLayout = computed(() => isMobile.value || isTabletLayout.val
 const showMobileMenu = computed(() => route.path === "/settings" || route.path === "/settings/");
 
 function goToSettingsMenu() {
-  router.push("/settings");
+  router.replace("/settings");
 }
 </script>
