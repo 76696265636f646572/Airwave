@@ -43,7 +43,7 @@ Many music apps weren’t built for **shared listening**:
 * One stream → multiple listeners
 * Works across browsers and Sonos
 * Import Spotify playlists → automatically matched to playable tracks
-* Multi-source playback (YouTube, SoundCloud, Mixcloud)
+* Multi-source playback (YouTube, SoundCloud, Mixcloud, direct URLs, optional local files)
 
 Simple idea. Huge difference.
 
@@ -73,8 +73,18 @@ Simple idea. Huge difference.
 * YouTube (videos + playlists)
 * SoundCloud (tracks + sets)
 * Mixcloud (shows)
+* Direct HTTP(S) URLs to audio when ffmpeg can read them
+* Local files
 
 👉 Paste almost any music link — it just works
+
+---
+
+### 💿 Local files & folders
+
+* Point Airwave at one or more directories with **`AIRWAVE_LOCAL_MEDIA_ROOTS`**
+* Browse and queue tracks from the UI (paths must stay inside those roots)
+* Great for NAS mounts, a music library on disk, or bind-mounted folders in Docker
 
 ---
 
@@ -148,6 +158,8 @@ Set your public URL:
 AIRWAVE_PUBLIC_BASE_URL=http://192.168.1.50:8000
 ```
 
+For **local files**, mount host directories into the container and set `AIRWAVE_LOCAL_MEDIA_ROOTS` to those in-container paths (see **Configuration** below).
+
 ---
 
 ## ⚙️ Configuration
@@ -160,6 +172,11 @@ AIRWAVE_PUBLIC_BASE_URL=http://192.168.1.50:8000
 AIRWAVE_FFMPEG_PATH=./bin/ffmpeg
 AIRWAVE_YT_DLP_PATH=./bin/yt-dlp
 AIRWAVE_DENO_PATH=./bin/deno
+
+# Optional: allow browsing and queuing audio from these directories (server-side paths).
+# Comma-separated list, or a JSON array string, e.g. ["/music","/data/audio"].
+# Leave unset to disable local media. In Docker, bind-mount the host folders and set paths inside the container.
+AIRWAVE_LOCAL_MEDIA_ROOTS=/path/to/music,/other/library
 
 AIRWAVE_MP3_BITRATE=128k
 AIRWAVE_CHUNK_SIZE=256
