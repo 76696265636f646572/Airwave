@@ -63,13 +63,14 @@ class PlaybackState:
 
 
 class SharedMp3Hub:
-    def __init__(self) -> None:
+    def __init__(self, stream_queue_size: int) -> None:
         self._clients: dict[str, queue.Queue[bytes]] = {}
         self._lock = threading.Lock()
+        self._stream_queue_size = stream_queue_size
 
     def subscribe(self) -> Generator[bytes, None, None]:
         client_id = str(time.time_ns())
-        q: queue.Queue[bytes] = queue.Queue(maxsize=16)
+        q: queue.Queue[bytes] = queue.Queue(maxsize=self._stream_queue_size)
         with self._lock:
             self._clients[client_id] = q
         try:
@@ -119,6 +120,7 @@ class StreamEngine:
         repository: Repository,
         yt_dlp_service: YtDlpService,
         ffmpeg_pipeline: FfmpegPipeline,
+        stream_queue_size: int = 16,
         chunk_size: int = 4096,
         queue_poll_seconds: float = 1.0,
         playback_retry_count: int = 2,
@@ -133,7 +135,7 @@ class StreamEngine:
         self.playback_retry_count = max(0, playback_retry_count)
         self.stats_log_seconds = max(1.0, stats_log_seconds)
         self.state = PlaybackState()
-        self.hub = SharedMp3Hub()
+        self.hub = SharedMp3Hub(stream_queue_size)
         self._stop_event = threading.Event()
         self._skip_event = threading.Event()
         self._control_lock = threading.Lock()

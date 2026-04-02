@@ -162,8 +162,12 @@ AIRWAVE_YT_DLP_PATH=./bin/yt-dlp
 AIRWAVE_DENO_PATH=./bin/deno
 
 AIRWAVE_MP3_BITRATE=128k
+AIRWAVE_CHUNK_SIZE=256
+AIRWAVE_STREAM_QUEUE_SIZE=16
 AIRWAVE_LOG_LEVEL=info
 ```
+
+`AIRWAVE_CHUNK_SIZE` is how many bytes are read from ffmpeg’s stdout per pull into the shared stream (default `256`). Larger values mean fewer read syscalls; very small values increase overhead. `AIRWAVE_STREAM_QUEUE_SIZE` is the max depth of the in-memory buffer between ffmpeg and connected listeners (default `16`). Raise it if devices such as Sonos underrun the live stream.
 
 ---
 
