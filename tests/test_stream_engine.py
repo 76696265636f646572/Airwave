@@ -75,7 +75,7 @@ class FakeYtDlp:
 
 
 def test_shared_hub_fan_out():
-    hub = SharedMp3Hub()
+    hub = SharedMp3Hub(stream_queue_size=16)
     gen1 = hub.subscribe()
     gen2 = hub.subscribe()
     received: list[bytes] = []
@@ -96,7 +96,7 @@ def test_shared_hub_fan_out():
 
 
 def test_shared_hub_clear_drops_buffered_audio():
-    hub = SharedMp3Hub()
+    hub = SharedMp3Hub(stream_queue_size=16)
     hub._clients["client-a"] = queue.Queue()  # noqa: SLF001 - focused hub coverage
     hub._clients["client-b"] = queue.Queue()  # noqa: SLF001 - focused hub coverage
 
