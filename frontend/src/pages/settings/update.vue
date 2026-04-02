@@ -2,7 +2,7 @@
   <div>
     <h2 class="text-2xl font-bold">Update</h2>
     <p class="mt-1 text-sm text-muted">
-      Manage included binaries (yt-dlp, ffmpeg, deno) and install updates.
+      Manage included binaries (yt-dlp, ffmpeg, ffprobe, deno) and install updates.
     </p>
 
     <div v-if="loading" class="mt-6 text-sm text-muted">Loading...</div>

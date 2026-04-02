@@ -57,7 +57,7 @@ RUN ARCH=$(uname -m) \
     && chmod +x /build/bin/deno \
     && rm -rf /tmp/deno.zip /tmp/deno-extract
 
-# Download and install ffmpeg
+# Download and install ffmpeg (yt-dlp FFmpeg-Builds tarball)
 RUN ARCH=$(uname -m) \
     && case "$ARCH" in \
         x86_64|amd64) ASSET_URL="https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz" ;; \
@@ -70,6 +70,23 @@ RUN ARCH=$(uname -m) \
     && FFMPEG_BIN=$(find "$TMP_DIR" -type f -name ffmpeg | head -n 1) \
     && cp "$FFMPEG_BIN" /build/bin/ffmpeg \
     && chmod +x /build/bin/ffmpeg \
+    && rm -rf "$TMP_DIR"
+
+# ffprobe from Martin Riedl FFmpeg build server (https://ffmpeg.martin-riedl.de/ — redirect "Scripting URLs", release build)
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in \
+        x86_64|amd64) MR_ARCH=amd64 ;; \
+        aarch64|arm64) MR_ARCH=arm64 ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac \
+    && TMP_DIR=$(mktemp -d) \
+    && curl -fsSL -L --retry 3 --retry-delay 2 \
+        "https://ffmpeg.martin-riedl.de/redirect/latest/linux/${MR_ARCH}/release/ffprobe.zip" \
+        -o "$TMP_DIR/ffprobe.zip" \
+    && unzip -q "$TMP_DIR/ffprobe.zip" -d "$TMP_DIR/out" \
+    && FFPROBE_BIN=$(find "$TMP_DIR/out" -type f -name ffprobe | head -n 1) \
+    && cp "$FFPROBE_BIN" /build/bin/ffprobe \
+    && chmod +x /build/bin/ffprobe \
     && rm -rf "$TMP_DIR"
 
 # Production stage
@@ -104,6 +121,7 @@ COPY --chown=airwave:airwave --from=builder /build/app/static/dist ./app/static/
 COPY --chown=airwave:airwave --from=builder /build/bin/yt-dlp ./bin/yt-dlp
 COPY --chown=airwave:airwave --from=builder /build/bin/deno ./bin/deno
 COPY --chown=airwave:airwave --from=builder /build/bin/ffmpeg ./bin/ffmpeg
+COPY --chown=airwave:airwave --from=builder /build/bin/ffprobe ./bin/ffprobe
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \

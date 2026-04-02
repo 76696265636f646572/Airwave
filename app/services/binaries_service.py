@@ -1,4 +1,4 @@
-"""Service for checking and installing yt-dlp, ffmpeg, and deno binaries."""
+"""Service for checking and installing yt-dlp, ffmpeg, ffprobe, and deno binaries."""
 
 from __future__ import annotations
 
@@ -28,6 +28,9 @@ DENO_RELEASES_URL = "https://api.github.com/repos/denoland/deno/releases"
 
 # Default User-Agent to avoid GitHub rate limiting
 GITHUB_UA = "Airwave/1.0 (https://github.com/airwave)"
+
+# Martin Riedl static FFmpeg/ffprobe builds (release track for /api/binaries/updates)
+MARTIN_RIEDL_FFMPEG_INDEX_URL = "https://ffmpeg.martin-riedl.de/"
 
 
 def _request_json(url: str) -> list[dict[str, Any]]:
@@ -82,6 +85,129 @@ def _parse_ffmpeg_version(out: str) -> str:
             return match.group(1)
         except ValueError:
             return match.group(1)
+
+
+def _strip_ffprobe_url_version_suffix(token: str) -> str:
+    """Martin Riedl builds append '-https://...' to the version token; show only the leading part."""
+    if not token:
+        return token
+    idx = token.lower().find("-http")
+    if idx > 0:
+        return token[:idx]
+    return token
+
+
+def _parse_ffprobe_version(out: str) -> str | None:
+    match = re.search(r"ffprobe version (\S+)", out or "")
+    if match:
+        token = _strip_ffprobe_url_version_suffix(match.group(1))
+        try:
+            date = re.search(r"(\d{8})", token)
+            if date:
+                return datetime.datetime.strptime(date.group(1), "%Y%m%d").strftime("%Y-%m-%d")
+            return token
+        except ValueError:
+            return token
+    return None
+
+
+def _martin_riedl_release_h3_for_platform() -> str | None:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "linux":
+        if machine in {"x86_64", "amd64"}:
+            return "Linux (amd64)"
+        if machine in {"aarch64", "arm64"}:
+            return "Linux (arm64v8)"
+        return None
+    if system == "darwin":
+        if machine in {"x86_64", "amd64"}:
+            return "macOS (Intel/amd64)"
+        if machine in {"aarch64", "arm64"}:
+            return "macOS (Apple Silicon/arm64)"
+        return None
+    return None
+
+
+def _martin_riedl_release_section_html(html: str) -> str | None:
+    start = html.find("<h2>Download Release Build</h2>")
+    if start < 0:
+        return None
+    end = html.find("<h2>Timeline", start)
+    if end < 0:
+        return None
+    return html[start:end]
+
+
+def _html_subsection_after_h3(html: str, h3_inner_text: str) -> str | None:
+    needle = f"<h3>{h3_inner_text}</h3>"
+    pos = html.find(needle)
+    if pos < 0:
+        return None
+    rest = html[pos + len(needle) :]
+    nxt = rest.find("<h3>")
+    return rest[:nxt] if nxt >= 0 else rest
+
+
+def _mr_release_version_from_subsection(subsection: str) -> str | None:
+    m = re.search(r"<p>\s*<b>\s*Release:\s*</b>\s*([^<]+?)\s*</p>", subsection, re.IGNORECASE)
+    if m:
+        label = m.group(1).strip()
+        if label:
+            return label
+    m = re.search(
+        r'(?:https://ffmpeg\.martin-riedl\.de)?/download/[^"\s]+/\d+_([\d.]+)/ffprobe\.zip',
+        subsection,
+    )
+    return m.group(1) if m else None
+
+
+_SIMPLE_RELEASE_VERSION = re.compile(r"^\d+(?:\.\d+)*$")
+
+
+def _mr_release_numeric_newer(latest: str, current: str) -> bool:
+    """True if both look like numeric release labels (e.g. 8.1) and latest is greater."""
+    if not _SIMPLE_RELEASE_VERSION.match(latest) or not _SIMPLE_RELEASE_VERSION.match(current):
+        return False
+
+    def parts(s: str) -> list[int]:
+        return [int(x) for x in s.split(".")]
+
+    l, c = parts(latest), parts(current)
+    for i in range(max(len(l), len(c))):
+        a = l[i] if i < len(l) else 0
+        b = c[i] if i < len(c) else 0
+        if a > b:
+            return True
+        if a < b:
+            return False
+    return False
+
+
+def _fetch_martin_riedl_latest_release_ffprobe_version() -> str | None:
+    h3 = _martin_riedl_release_h3_for_platform()
+    if not h3:
+        return None
+    try:
+        req = urllib.request.Request(
+            MARTIN_RIEDL_FFMPEG_INDEX_URL,
+            headers={"User-Agent": GITHUB_UA},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - documented index URL
+            html = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.warning("Failed to fetch Martin Riedl FFmpeg index: %s", e)
+        return None
+    release = _martin_riedl_release_section_html(html)
+    if not release:
+        logger.warning("Martin Riedl index: missing Download Release Build section")
+        return None
+    block = _html_subsection_after_h3(release, h3)
+    if not block:
+        logger.warning("Martin Riedl index: missing release subsection for %s", h3)
+        return None
+    return _mr_release_version_from_subsection(block)
+
 
 def _parse_deno_version(out: str) -> str:
     # "deno 2.0.0" or "deno 2.0.0 (release, x86_64-unknown-linux-gnu)"
@@ -156,7 +282,7 @@ class UpdateInfo:
 
 
 class BinariesService:
-    """Service for inspecting and updating yt-dlp, ffmpeg, and deno binaries."""
+    """Service for inspecting and updating yt-dlp, ffmpeg, ffprobe, and deno binaries."""
 
     def __init__(
         self,
@@ -173,6 +299,28 @@ class BinariesService:
         for name, configured, resolve_fn, parse_fn, version_flag in [
             ("yt-dlp", self._yt_dlp_configured, self._resolve_yt_dlp, _parse_yt_dlp_version, "--version"),
             ("ffmpeg", self._ffmpeg_configured, self._resolve_ffmpeg, _parse_ffmpeg_version, "-version"),
+        ]:
+            path = resolve_fn()
+            is_system = not _is_managed_path(path)
+            version = ""
+            if path:
+                out = _run_version([path, version_flag])
+                parsed = parse_fn(out) if out else ""
+                version = parsed if parsed is not None else ""
+            result.append(BinaryStatus(name=name, path=path or configured, version=version, is_system=is_system))
+
+        fp_path = self._resolve_ffprobe()
+        fp_is_system = not _is_managed_path(fp_path)
+        fp_version = ""
+        if fp_path:
+            fp_out = _run_version([fp_path, "-version"])
+            parsed_fp = _parse_ffprobe_version(fp_out) if fp_out else ""
+            fp_version = parsed_fp if parsed_fp is not None else ""
+        result.append(
+            BinaryStatus(name="ffprobe", path=fp_path, version=fp_version, is_system=fp_is_system),
+        )
+
+        for name, configured, resolve_fn, parse_fn, version_flag in [
             ("deno", self._deno_configured, self._resolve_deno, _parse_deno_version, "--version"),
         ]:
             path = resolve_fn()
@@ -180,7 +328,8 @@ class BinariesService:
             version = ""
             if path:
                 out = _run_version([path, version_flag])
-                version = parse_fn(out) if out else ""
+                parsed = parse_fn(out) if out else ""
+                version = parsed if parsed is not None else ""
             result.append(BinaryStatus(name=name, path=path or configured, version=version, is_system=is_system))
         return result
 
@@ -198,6 +347,13 @@ class BinariesService:
             expanded = (Path.cwd() / expanded).resolve()
         return str(expanded)
 
+    def _resolve_ffprobe(self) -> str:
+        """Path next to resolved ffmpeg (same rule as FfmpegPipeline._ffprobe_path)."""
+        ffmpeg_resolved = self._resolve_ffmpeg()
+        if not ffmpeg_resolved:
+            return ""
+        return str(Path(ffmpeg_resolved).parent / "ffprobe")
+
     def _resolve_deno(self) -> str:
         return _resolve_path(self._deno_configured)
 
@@ -206,9 +362,15 @@ class BinariesService:
             return self._resolve_yt_dlp()
         if name == "ffmpeg":
             return self._resolve_ffmpeg()
+        if name == "ffprobe":
+            return self._resolve_ffprobe()
         if name == "deno":
             return self._resolve_deno()
         return ""
+
+    def _latest_martin_riedl_ffprobe_release(self) -> str | None:
+        """Release-track version string from https://ffmpeg.martin-riedl.de/ (matches setup_ffprobe.sh)."""
+        return _fetch_martin_riedl_latest_release_ffprobe_version()
 
     def get_updates(self) -> list[UpdateInfo]:
         binaries = {b.name: b for b in self.get_binaries()}
@@ -241,6 +403,26 @@ class BinariesService:
         elif cur:
             result.append(
                 UpdateInfo(name="ffmpeg", current=cur.version or "—", latest=latest_ff or "—", has_update=False)
+            )
+
+        cur = binaries.get("ffprobe")
+        if cur:
+            latest_mr = self._latest_martin_riedl_ffprobe_release()
+            cur_v = (cur.version or "").strip()
+            latest_display = latest_mr or "—"
+            has_update = False
+            if latest_mr and not cur.is_system:
+                if not cur_v:
+                    has_update = True
+                else:
+                    has_update = _mr_release_numeric_newer(latest_mr, cur_v)
+            result.append(
+                UpdateInfo(
+                    name="ffprobe",
+                    current=cur_v or "—",
+                    latest=latest_display,
+                    has_update=has_update,
+                )
             )
 
         # deno

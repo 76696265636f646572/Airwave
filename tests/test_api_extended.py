@@ -642,9 +642,9 @@ def test_binaries_endpoints(tmp_path):
         assert resp.status_code == 200
         payload = resp.json()
         assert "binaries" in payload
-        assert len(payload["binaries"]) == 3
+        assert len(payload["binaries"]) == 4
         names = {b["name"] for b in payload["binaries"]}
-        assert names == {"yt-dlp", "ffmpeg", "deno"}
+        assert names == {"yt-dlp", "ffmpeg", "ffprobe", "deno"}
         for b in payload["binaries"]:
             assert "path" in b
             assert "version" in b
@@ -668,6 +668,8 @@ def test_binaries_in_use_when_playing(tmp_path):
         assert yt_dlp["in_use"] is True
         deno = next(b for b in payload["binaries"] if b["name"] == "deno")
         assert deno["in_use"] is False
+        ffprobe = next(b for b in payload["binaries"] if b["name"] == "ffprobe")
+        assert ffprobe["in_use"] is False
 
 
 def test_binaries_updates_endpoint(tmp_path):
