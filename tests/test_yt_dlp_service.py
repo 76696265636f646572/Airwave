@@ -4,9 +4,10 @@ from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import pytest
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.db.repository import Repository
+from app.services.yt_dlp_client import YtDlpError
 from app.services.yt_dlp_service import cookie_setting_key
 from app.services.yt_dlp_service import YtDlpService
 
@@ -49,7 +50,6 @@ def test_is_playlist_url_start_radio(service):
 class _CaptureClient:
     resolved_values: list[tuple[str, str | None]] = field(default_factory=list)
     single_calls: list[tuple[str, str | None]] = field(default_factory=list)
-    stream_calls: list[tuple[str, str | None]] = field(default_factory=list)
     spawn_calls: list[tuple[str, str | None]] = field(default_factory=list)
     search_calls: list[tuple[str, str, int, str | None]] = field(default_factory=list)
     playlist_calls: list[tuple[str, str | None]] = field(default_factory=list)
@@ -63,16 +63,28 @@ class _CaptureClient:
     def get_single_json(self, url: str, cookie_file: str | None = None) -> dict[str, object]:
         self.single_calls.append((url, cookie_file))
         parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        video_id = (query.get("v") or ["abc"])[0]
         host = (parsed.hostname or "").lower()
         if host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com"):
-            return {
-                "id": "abc",
+            payload = {
+                "id": video_id,
                 "title": "YouTube Track",
                 "uploader": "YouTube Channel",
                 "duration": 120,
                 "thumbnail": "https://img.youtube.com/abc.jpg",
-                "webpage_url": "https://www.youtube.com/watch?v=abc",
+                "webpage_url": f"https://www.youtube.com/watch?v={video_id}",
+                "url": "https://stream.example/audio.mp3",
             }
+            if video_id == "downloads":
+                payload.pop("url")
+                payload["requested_downloads"] = [{"url": "https://stream.example/requested-downloads.mp3"}]
+            elif video_id == "formats":
+                payload.pop("url")
+                payload["requested_formats"] = [{"url": "https://stream.example/requested-formats.mp3"}]
+            elif video_id == "missing":
+                payload.pop("url")
+            return payload
         if host == "soundcloud.com" or host.endswith(".soundcloud.com"):
             return {
                 "id": 11,
@@ -80,6 +92,7 @@ class _CaptureClient:
                 "uploader": "SoundCloud Artist",
                 "duration": 240,
                 "webpage_url": "https://soundcloud.com/artist/track",
+                "url": "https://stream.example/audio.mp3",
             }
         return {
             "id": "55",
@@ -87,11 +100,8 @@ class _CaptureClient:
             "uploader": "Mix DJ",
             "duration": 3600,
             "webpage_url": "https://www.mixcloud.com/user/show/",
+            "url": "https://stream.example/audio.mp3",
         }
-
-    def get_stream_url(self, url: str, cookie_file: str | None = None) -> str:
-        self.stream_calls.append((url, cookie_file))
-        return "https://stream.example/audio.mp3"
 
     def spawn_audio_stream(self, url: str, cookie_file: str | None = None):
         self.spawn_calls.append((url, cookie_file))
@@ -239,7 +249,32 @@ def test_resolve_video_force_refresh_bypasses_cached_stream_url(service):
     assert second is first
     assert refreshed is not first
     assert len(capture_client.single_calls) == 2
-    assert len(capture_client.stream_calls) == 2
+
+
+def test_resolve_video_uses_requested_downloads_when_top_level_url_missing(service):
+    capture_client = _CaptureClient()
+    service.client = capture_client
+
+    resolved = service.resolve_video("https://www.youtube.com/watch?v=downloads")
+
+    assert resolved.stream_url == "https://stream.example/requested-downloads.mp3"
+
+
+def test_resolve_video_uses_requested_formats_when_top_level_url_missing(service):
+    capture_client = _CaptureClient()
+    service.client = capture_client
+
+    resolved = service.resolve_video("https://www.youtube.com/watch?v=formats")
+
+    assert resolved.stream_url == "https://stream.example/requested-formats.mp3"
+
+
+def test_resolve_video_raises_when_metadata_contains_no_stream_url(service):
+    capture_client = _CaptureClient()
+    service.client = capture_client
+
+    with pytest.raises(YtDlpError, match="Could not resolve direct stream URL from yt-dlp metadata"):
+        service.resolve_video("https://www.youtube.com/watch?v=missing")
 
 
 def test_resolve_video_cache_is_partitioned_by_cookie_context(tmp_path):
@@ -262,10 +297,6 @@ def test_resolve_video_cache_is_partitioned_by_cookie_context(tmp_path):
 
     assert first is not second
     assert capture_client.single_calls == [
-        ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-one.cookies"),
-        ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-two.cookies"),
-    ]
-    assert capture_client.stream_calls == [
         ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-one.cookies"),
         ("https://www.youtube.com/watch?v=abc", "/tmp/youtube-account-two.cookies"),
     ]

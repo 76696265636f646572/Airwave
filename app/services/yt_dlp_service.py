@@ -205,7 +205,31 @@ class YtDlpService:
             raise YtDlpError("Expected a single item URL, got playlist URL")
         raw = self.client.get_single_json(url, cookie_file=cookie_file)
         extracted = dispatch.extractor.extract_single(url, raw)
-        stream_url = self.client.get_stream_url(extracted.source_url, cookie_file=cookie_file)
+        stream_url = str(raw.get("url") or "").strip()
+        if not stream_url:
+            requested_downloads = raw.get("requested_downloads")
+            if isinstance(requested_downloads, list):
+                stream_url = next(
+                    (
+                        str(entry.get("url") or "").strip()
+                        for entry in requested_downloads
+                        if isinstance(entry, dict) and entry.get("url")
+                    ),
+                    "",
+                )
+        if not stream_url:
+            requested_formats = raw.get("requested_formats")
+            if isinstance(requested_formats, list):
+                stream_url = next(
+                    (
+                        str(entry.get("url") or "").strip()
+                        for entry in requested_formats
+                        if isinstance(entry, dict) and entry.get("url")
+                    ),
+                    "",
+                )
+        if not stream_url:
+            raise YtDlpError("Could not resolve direct stream URL from yt-dlp metadata")
         resolved = ResolvedTrack(
             provider=extracted.provider,
             provider_item_id=extracted.provider_item_id,

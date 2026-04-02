@@ -140,31 +140,19 @@ class YtDlpClient:
         except json.JSONDecodeError as exc:
             raise YtDlpError("Invalid JSON from yt-dlp") from exc
 
-    def _run_text(self, *args: str, cookie_file: str | None = None) -> str:
-        cmd = [*self._build_base_cmd(cookie_file=cookie_file), *args]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        except FileNotFoundError as exc:
-            raise YtDlpError(
-                f"yt-dlp binary not found at '{self.binary_path}'. "
-                "Install yt-dlp or set AIRWAVE_YT_DLP_PATH."
-            ) from exc
-        if proc.returncode != 0:
-            raise YtDlpError(proc.stderr.strip() or "yt-dlp failed")
-        return proc.stdout.strip()
-
     def get_single_json(self, url: str, cookie_file: str | None = None) -> dict[str, Any]:
-        return self._run_json("--no-playlist", "--skip-download", "-J", url, cookie_file=cookie_file)
+        return self._run_json(
+            "--no-playlist",
+            "--skip-download",
+            "-f",
+            "bestaudio/best",
+            "-J",
+            url,
+            cookie_file=cookie_file,
+        )
 
     def get_playlist_json(self, url: str, cookie_file: str | None = None) -> dict[str, Any]:
         return self._run_json("--flat-playlist", "--skip-download", "-J", url, cookie_file=cookie_file)
-
-    def get_stream_url(self, url: str, cookie_file: str | None = None) -> str:
-        output = self._run_text("--no-playlist", "-f", "bestaudio/best", "-g", url, cookie_file=cookie_file)
-        stream_url = next((line.strip() for line in output.splitlines() if line.strip()), "")
-        if not stream_url:
-            raise YtDlpError("Could not resolve direct stream URL")
-        return stream_url
 
     def spawn_audio_stream(self, url: str, cookie_file: str | None = None) -> subprocess.Popen[bytes]:
         cmd = [
