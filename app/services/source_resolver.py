@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from urllib.parse import unquote, urldefrag, urlparse
+from urllib.parse import unquote, urldefrag, urlparse, urlunparse
 
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
 from app.services.yt_dlp_service import ResolvedTrack
@@ -35,15 +35,50 @@ _BROWSE_AUDIO_EXTENSIONS = frozenset(
 )
 
 
+def _lowercase_host_in_hostport(hostport: str) -> str:
+    """Lowercase only the hostname in host[:port] or [ipv6][:port]; leave port unchanged."""
+    if hostport.startswith("["):
+        end = hostport.find("]")
+        if end == -1:
+            return hostport
+        host = hostport[1:end]
+        rest = hostport[end + 1 :]  # ":port" or ""
+        return f"[{host.lower()}]{rest}"
+    if ":" in hostport:
+        host, sep, port = hostport.rpartition(":")
+        return f"{host.lower()}{sep}{port}"
+    return hostport.lower()
+
+
+def _rebuild_http_netloc(parsed) -> str:
+    """Rebuild netloc with lowercase hostname only; preserve userinfo case and encoding."""
+    raw = parsed.netloc or ""
+    if not raw:
+        return ""
+    if "@" in raw:
+        userinfo, _, hostport = raw.rpartition("@")
+        host_norm = _lowercase_host_in_hostport(hostport)
+        return f"{userinfo}@{host_norm}"
+    return _lowercase_host_in_hostport(raw)
+
+
 def normalize_http_url(url: str) -> str:
     clean, _frag = urldefrag(url.strip())
     parsed = urlparse(clean)
     scheme = (parsed.scheme or "https").lower()
-    netloc = (parsed.netloc or "").lower()
+    netloc = _rebuild_http_netloc(parsed)
     if not netloc:
         return clean
-    path = parsed.path or ""
-    return f"{scheme}://{netloc}{path}" + (f"?{parsed.query}" if parsed.query else "")
+    return urlunparse(
+        (
+            scheme,
+            netloc,
+            parsed.path or "",
+            parsed.params or "",
+            parsed.query or "",
+            "",
+        )
+    )
 
 
 def _title_from_http_url(url: str) -> str:
