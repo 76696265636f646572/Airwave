@@ -90,11 +90,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import ExplorerFile from "../components/explorer/ExplorerFile.vue";
 import ExplorerFolder from "../components/explorer/ExplorerFolder.vue";
 import { useLibraryState } from "../composables/useLibraryState";
+
+const route = useRoute();
+const router = useRouter();
 
 const {
   playlists,
@@ -115,6 +119,7 @@ const entries = ref([]);
 const loading = ref(false);
 const errorMsg = ref("");
 const includeSubfolders = ref(true);
+const ready = ref(false);
 
 const localPlaylists = computed(() => (playlists.value ?? []).filter((p) => p?.kind !== "remote_youtube"));
 const showingRoots = computed(() => !currentDir.value);
@@ -183,6 +188,22 @@ function isUnderRoot(path, root) {
   return path === root || path.startsWith(root.endsWith("/") ? root : `${root}/`);
 }
 
+function normalizeQueryPath(value) {
+  if (Array.isArray(value)) return (value[0] || "").trim();
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function syncRoutePath(path) {
+  const normalizedPath = typeof path === "string" ? path.trim() : "";
+  const nextQuery = { ...route.query };
+  if (normalizedPath) {
+    nextQuery.path = normalizedPath;
+  } else {
+    delete nextQuery.path;
+  }
+  await router.replace({ query: nextQuery });
+}
+
 async function loadRoots() {
   loading.value = true;
   errorMsg.value = "";
@@ -211,19 +232,25 @@ async function loadDirectory(path) {
   }
 }
 
-async function openDirectory(path) {
+async function openDirectory(path, { updateRoute = true } = {}) {
   if (!path) return;
   if (!activeRoot.value || path === activeRoot.value || roots.value.some((root) => root.path === path)) {
     activeRoot.value = roots.value.some((root) => root.path === path) ? path : activeRoot.value;
   }
   currentDir.value = path;
   await loadDirectory(path);
+  if (updateRoute) {
+    await syncRoutePath(path);
+  }
 }
 
-function showRoots() {
+async function showRoots({ updateRoute = true } = {}) {
   currentDir.value = "";
   activeRoot.value = "";
   entries.value = [];
+  if (updateRoute) {
+    await syncRoutePath("");
+  }
 }
 
 async function openBreadcrumb(path) {
@@ -262,7 +289,39 @@ function addFolderToPlaylist(playlistId, path) {
   addLocalFolderToPlaylist(playlistId, path, { recursive: includeSubfolders.value });
 }
 
-onMounted(() => {
-  loadRoots();
+async function restorePathFromRoute(pathQuery) {
+  const path = normalizeQueryPath(pathQuery);
+  if (!path) {
+    if (!showingRoots.value) {
+      await showRoots({ updateRoute: false });
+    }
+    return;
+  }
+
+  const root = roots.value.find((candidate) => isUnderRoot(path, candidate.path));
+  if (!root) {
+    await showRoots({ updateRoute: false });
+    await syncRoutePath("");
+    return;
+  }
+
+  if (currentDir.value === path && activeRoot.value === root.path) return;
+
+  activeRoot.value = root.path;
+  await openDirectory(path, { updateRoute: false });
+}
+
+watch(
+  () => route.query.path,
+  async (value) => {
+    if (!ready.value) return;
+    await restorePathFromRoute(value);
+  },
+);
+
+onMounted(async () => {
+  await loadRoots();
+  ready.value = true;
+  await restorePathFromRoute(route.query.path);
 });
 </script>

@@ -3,7 +3,7 @@
     class="group relative flex min-w-0 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 playlist-card md:min-h-[7.5rem] md:flex-col md:justify-center md:gap-2 md:px-2 md:py-3"
     @click="$emit('open')"
   >
-    <UIcon name="i-bi-folder-fill" class="size-4 shrink-0 text-yellow-300 md:size-10" />
+    <UIcon name="i-bi-folder-fill" class="size-4 shrink-0 md:size-10" />
     <div class="min-w-0 flex-1 md:flex-none md:text-center">
       <p class="truncate text-sm md:max-w-full md:whitespace-normal md:break-all md:overflow-visible md:text-clip md:text-center" :title="entry.path">
         {{ entry.name }}
