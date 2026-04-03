@@ -34,7 +34,11 @@
         @update:open="(open) => !open && playlistSelector.resetSearch()"
       >
         <template #playlist-filter>
-          <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+          <PlaylistSelectorFilter
+            v-model="playlistSelector.playlistSearchTerm"
+            placeholder="Find a playlist"
+            @playlist-created="onAddToNewPlaylist"
+          />
         </template>
         <UButton
           type="button"
@@ -148,7 +152,6 @@ const isActive = computed(() => props.playlist.id === props.activePlaylistId && 
 const canAddToPlaylist = computed(() => (
   !props.isRemotePlaylist(props.playlist)
   && Number(props.playlist?.entry_count || 0) > 0
-  && (playlistSelector.localPlaylists.value ?? []).some((p) => p.id !== props.playlist.id)
 ));
 
 const dropdownItems = computed(() => {
@@ -168,17 +171,18 @@ const dropdownItems = computed(() => {
   const items = [
     [
       {
-        label: "Queue",
-        icon: "i-bi-music-note-list",
-        class: "cursor-pointer",
-        onSelect: () => queuePlaylist(props.playlist.id),
-      },
-      {
         label: "Play now",
         icon: "i-bi-play-fill",
         class: "cursor-pointer",
         onSelect: () => playPlaylistNow(props.playlist.id),
       },
+      {
+        label: "Queue",
+        icon: "i-bi-music-note-list",
+        class: "cursor-pointer",
+        onSelect: () => queuePlaylist(props.playlist.id),
+      },
+      
     ],
   ];
 
@@ -262,5 +266,9 @@ async function addPlaylistToPlaylist(targetPlaylistId) {
   if (!Array.isArray(entries) || entries.length === 0) return;
   await addEntriesToPlaylist(targetPlaylistId, entries);
   playlistSelector.resetSearch();
+}
+
+function onAddToNewPlaylist(created) {
+  if (created?.id != null) addPlaylistToPlaylist(created.id);
 }
 </script>

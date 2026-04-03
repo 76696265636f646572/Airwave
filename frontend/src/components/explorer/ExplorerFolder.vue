@@ -12,7 +12,7 @@
         {{ entry.path }}
       </p>
     </div>
-    <div class="shrink-0 opacity-100 transition-opacity md:absolute md:right-1 md:top-1 md:opacity-0 md:group-hover:opacity-100" @click.stop>
+    <div class="shrink-0 opacity-100 transition-opacity absolute md:right-1 md:top-1 md:opacity-0 md:group-hover:opacity-100" @click.stop>
       <ExplorerEntryMenu
         :entry="entry"
         :playlists="playlists"

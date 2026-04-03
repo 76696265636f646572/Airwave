@@ -62,6 +62,16 @@ export function useLibraryState() {
     }
   }
 
+
+  async function removeFromQueue(itemId) {
+    try {
+      await fetchJson(`/api/queue/${itemId}`, { method: "DELETE" });
+      notifySuccess("Removed from queue", "Item removed from queue.");
+    } catch (error) {
+      notifyError("Could not remove from queue", error);
+    }
+  }
+
   async function playUrl(url) {
     try {
       const result = await fetchJson("/api/queue/play-now", {
@@ -304,6 +314,17 @@ export function useLibraryState() {
       notifySuccess("Playlist updated");
     } catch (error) {
       notifyError("Could not update playlist", error);
+    }
+  }
+
+
+  async function removeFromPlaylist(entryId) {
+    try {
+      await fetchJson(`/api/playlists/entries/${entryId}`, { method: "DELETE" });
+      await refreshPlaylists();
+      notifySuccess("Removed from playlist", "Item removed from playlist.");
+    } catch (error) {
+      notifyError("Could not remove from playlist", error);
     }
   }
 
@@ -623,6 +644,7 @@ export function useLibraryState() {
     history,
     playlists,
     addUrl,
+    removeFromQueue,
     playUrl,
     importPlaylistUrl,
     startSpotifyImportFromUrl,
@@ -630,6 +652,7 @@ export function useLibraryState() {
     addUrlToPlaylist,
     addEntriesToPlaylist,
     createPlaylist,
+    removeFromPlaylist,
     queuePlaylist,
     playPlaylistNow,
     updatePlaylist,

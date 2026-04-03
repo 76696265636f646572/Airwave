@@ -43,7 +43,11 @@
               @update:open="(open) => !open && playlistSelector.resetSearch()"
             >
               <template #playlist-filter>
-                <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                <PlaylistSelectorFilter
+                  v-model="playlistSelector.playlistSearchTerm"
+                  placeholder="Find a playlist"
+                  @playlist-created="onImportUrlPlaylistCreated"
+                />
               </template>
               <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
                 <UIcon name="i-bi-chevron-down" class="size-4" />
@@ -135,7 +139,11 @@
                   @update:open="(open) => !open && playlistSelector.resetSearch()"
                 >
                   <template #playlist-filter>
-                    <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                    <PlaylistSelectorFilter
+                      v-model="playlistSelector.playlistSearchTerm"
+                      placeholder="Find a playlist"
+                      @playlist-created="onImportUrlPlaylistCreated"
+                    />
                   </template>
                   <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
                     <span aria-hidden="true">|</span>
@@ -359,7 +367,7 @@ const actionDropdownItems = computed(() => {
     },
   }));
 
-  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value) && playlists.value.length > 0) {
+  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value)) {
     const rawUrl = unifiedInput.value.trim();
     const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
     const playlistChildren = [
@@ -368,17 +376,6 @@ const actionDropdownItems = computed(() => {
         label: p.title,
         onSelect: () => {
           importPlaylistIntoPlaylist(urlForPlaylist, p.id);
-          unifiedInput.value = "";
-          addUrlSheetOpen.value = false;
-        },
-      })),
-    ];
-    const addToPlaylistChildren = [
-      { type: "label", slot: "playlist-filter" },
-      ...playlistSelector.filteredPlaylists.value.map((p) => ({
-        label: p.title,
-        onSelect: () => {
-          addUrlToPlaylist(p.id, urlForPlaylist);
           unifiedInput.value = "";
           addUrlSheetOpen.value = false;
         },
@@ -428,6 +425,16 @@ function runAction(actionId, closeAfter = false, urlOverride = null) {
 
 function runPrimaryAction(closeAfter = false) {
   runAction(defaultActionId.value, closeAfter, unifiedInput.value.trim());
+}
+
+function onImportUrlPlaylistCreated(created) {
+  if (created?.id == null) return;
+  const rawUrl = unifiedInput.value.trim();
+  if (!rawUrl) return;
+  const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
+  importPlaylistIntoPlaylist(urlForPlaylist, created.id);
+  unifiedInput.value = "";
+  addUrlSheetOpen.value = false;
 }
 
 function onUnifiedSubmit(closeAfter = false) {

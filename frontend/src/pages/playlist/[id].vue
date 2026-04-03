@@ -58,7 +58,11 @@
         />
         <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && playlistSelector.resetSearch()">
           <template #playlist-filter>
-            <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+            <PlaylistSelectorFilter
+              v-model="playlistSelector.playlistSearchTerm"
+              placeholder="Find a playlist"
+              @playlist-created="onAddToNewPlaylistFromPage"
+            />
           </template>
           <UButton
             type="button"
@@ -228,7 +232,7 @@ const dropdownItems = computed(() => {
       { label: "Play now", icon: "i-bi-play-fill", class: "cursor-pointer", onSelect: () => playPlaylistNow(pl.id) },
   ];
   const otherPlaylists = (playlistSelector.filteredPlaylists.value ?? []).filter((p) => p.id !== pl.id);
-  if (entries.value.length > 0 && playlists.value?.length > 0) {
+  if (entries.value.length > 0) {
     const addToPlaylistChildren = [
       { type: "label", slot: "playlist-filter" },
       ...otherPlaylists.map((p) => ({
@@ -268,6 +272,10 @@ async function addAllEntriesToPlaylist(targetPlaylistId, entriesToAdd) {
   const list = entriesToAdd ?? entries.value;
   await addEntriesToPlaylist(targetPlaylistId, list, { onComplete: loadPlaylist });
   playlistSelector.resetSearch();
+}
+
+function onAddToNewPlaylistFromPage(created) {
+  if (created?.id != null) addAllEntriesToPlaylist(created.id, entries.value);
 }
 
 function importRemotePlaylist() {

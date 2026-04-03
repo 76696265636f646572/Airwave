@@ -5,7 +5,11 @@
     @update:open="(open) => !open && resetSearch()"
   >
     <template #playlist-filter>
-      <PlaylistSelectorFilter v-model="playlistSearchTerm" placeholder="Find a playlist" />
+      <PlaylistSelectorFilter
+        v-model="playlistSearchTerm"
+        placeholder="Find a playlist"
+        @playlist-created="onPlaylistCreated"
+      />
     </template>
     <UButton
       class="cursor-pointer"
@@ -54,21 +58,23 @@ const dropdownItems = computed(() => {
     },
   ];
 
-  if (props.playlists.length > 0) {
-    const addToPlaylistChildren = [
-      { type: "label", slot: "playlist-filter" },
-      ...filteredPlaylists.value.map((p) => ({
-        label: p.title,
-        onSelect: () => emit("add-to-playlist", p.id),
-      })),
-    ];
-    items.push({
-      label: "Add to playlist",
-      icon: "i-bi-plus",
-      children: [addToPlaylistChildren],
-    });
-  }
+  const addToPlaylistChildren = [
+    { type: "label", slot: "playlist-filter" },
+    ...filteredPlaylists.value.map((p) => ({
+      label: p.title,
+      onSelect: () => emit("add-to-playlist", p.id),
+    })),
+  ];
+  items.push({
+    label: "Add to playlist",
+    icon: "i-bi-plus",
+    children: [addToPlaylistChildren],
+  });
 
   return items;
 });
+
+function onPlaylistCreated(created) {
+  if (created?.id != null) emit("add-to-playlist", created.id);
+}
 </script>
