@@ -16,7 +16,6 @@ from app.core.logging import configure_logging
 from app.db.repository import Repository
 from app.services.binaries_service import BinariesService
 from app.services.ffmpeg_pipeline import FfmpegPipeline
-from app.services.ffmpeg_setup import ensure_ffmpeg_path
 from app.services.playlist_service import PlaylistService
 from app.services.source_resolver import MediaSourceResolver
 from app.services.spotify_import_service import SpotifyImportService
@@ -60,18 +59,14 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     configure_logging(settings.log_level)
 
     repository = Repository(settings.db_url)
-    ffmpeg_path = ensure_ffmpeg_path(settings.ffmpeg_path)
+    ffmpeg_path = settings.ffmpeg_path
     yt_dlp_service = YtDlpService(
         settings.yt_dlp_path,
         ffmpeg_path,
         settings.deno_path,
         repository=repository,
     )
-    ffmpeg_pipeline = FfmpegPipeline(
-        ffmpeg_path,
-        ffprobe_path=settings.ffprobe_path,
-        bitrate=settings.mp3_bitrate,
-    )
+    ffmpeg_pipeline = FfmpegPipeline(ffmpeg_path, settings.ffprobe_path, bitrate=settings.mp3_bitrate)
     ui_events = UiEventBroker()
 
     def notify_ui_state_changed() -> None:
