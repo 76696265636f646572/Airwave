@@ -16,7 +16,12 @@
       >
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="min-w-0">
-            <div class="font-medium">{{ b.name }}</div>
+            <div class="font-medium flex items-center gap-2">
+              <span class="truncate">{{ b.name }}</span>
+              <a v-if="b.link" :href="b.link" target="_blank" class="text-xs text-muted">
+                <UIcon name="i-bi-box-arrow-up-right" class="size-3 shrink-0" aria-hidden="true" />
+              </a>
+            </div>
             <div class="mt-1 text-sm text-muted truncate" :title="b.path">{{ b.path }}</div>
             <div class="mt-1 text-xs text-muted">
               Installed: {{ b.version || "—" }}

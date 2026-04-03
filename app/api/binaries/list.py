@@ -30,6 +30,7 @@ def list_binaries(request: Request) -> dict[str, list[dict[str, Any]]]:
                 "version": b.version,
                 "is_system": b.is_system,
                 "in_use": _is_binary_in_use(b.name, engine),
+                "link": b.link,
             }
             for b in binaries
         ]

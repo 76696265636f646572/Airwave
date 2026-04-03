@@ -271,6 +271,7 @@ class BinaryStatus:
     path: str
     version: str
     is_system: bool
+    link: str | None = None
 
 
 @dataclass
@@ -298,9 +299,11 @@ class BinariesService:
 
     def get_binaries(self) -> list[BinaryStatus]:
         result: list[BinaryStatus] = []
-        for name, configured, resolve_fn, parse_fn, version_flag in [
-            ("yt-dlp", self._yt_dlp_configured, self._resolve_yt_dlp, _parse_yt_dlp_version, "--version"),
-            ("ffmpeg", self._ffmpeg_configured, self._resolve_ffmpeg, _parse_ffmpeg_version, "-version"),
+        for name, configured, resolve_fn, parse_fn, version_flag, link in [
+            ("yt-dlp", self._yt_dlp_configured, self._resolve_yt_dlp, _parse_yt_dlp_version, "--version", "https://github.com/yt-dlp/yt-dlp/releases"),
+            ("ffmpeg", self._ffmpeg_configured, self._resolve_ffmpeg, _parse_ffmpeg_version, "-version", "https://github.com/yt-dlp/FFmpeg-Builds/releases"),
+            ("ffprobe", self._ffprobe_configured, self._resolve_ffprobe, _parse_ffprobe_version, "-version", MARTIN_RIEDL_FFMPEG_INDEX_URL),
+            ("deno", self._deno_configured, self._resolve_deno, _parse_deno_version, "--version", "https://github.com/denoland/deno/releases"),
         ]:
             path = resolve_fn()
             is_system = not _is_managed_path(path)
@@ -309,30 +312,9 @@ class BinariesService:
                 out = _run_version([path, version_flag])
                 parsed = parse_fn(out) if out else ""
                 version = parsed if parsed is not None else ""
-            result.append(BinaryStatus(name=name, path=path or configured, version=version, is_system=is_system))
+            link = link if link else None
+            result.append(BinaryStatus(name=name, path=path or configured, version=version, is_system=is_system, link=link))
 
-        fp_path = self._resolve_ffprobe()
-        fp_is_system = not _is_managed_path(fp_path)
-        fp_version = ""
-        if fp_path:
-            fp_out = _run_version([fp_path, "-version"])
-            parsed_fp = _parse_ffprobe_version(fp_out) if fp_out else ""
-            fp_version = parsed_fp if parsed_fp is not None else ""
-        result.append(
-            BinaryStatus(name="ffprobe", path=fp_path, version=fp_version, is_system=fp_is_system),
-        )
-
-        for name, configured, resolve_fn, parse_fn, version_flag in [
-            ("deno", self._deno_configured, self._resolve_deno, _parse_deno_version, "--version"),
-        ]:
-            path = resolve_fn()
-            is_system = not _is_managed_path(path)
-            version = ""
-            if path:
-                out = _run_version([path, version_flag])
-                parsed = parse_fn(out) if out else ""
-                version = parsed if parsed is not None else ""
-            result.append(BinaryStatus(name=name, path=path or configured, version=version, is_system=is_system))
         return result
 
     def _resolve_yt_dlp(self) -> str:
