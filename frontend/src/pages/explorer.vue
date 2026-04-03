@@ -219,16 +219,21 @@ async function loadRoots() {
 }
 
 async function loadDirectory(path) {
+  const localPath = path;
   loading.value = true;
   errorMsg.value = "";
   try {
-    const data = await browseLocalDirectory(path);
+    const data = await browseLocalDirectory(localPath);
+    if (currentDir.value !== localPath) return;
     entries.value = data.entries ?? [];
   } catch (error) {
+    if (currentDir.value !== localPath) return;
     errorMsg.value = error?.message || "Browse failed";
     entries.value = [];
   } finally {
-    loading.value = false;
+    if (currentDir.value === localPath) {
+      loading.value = false;
+    }
   }
 }
 
@@ -248,6 +253,7 @@ async function showRoots({ updateRoute = true } = {}) {
   currentDir.value = "";
   activeRoot.value = "";
   entries.value = [];
+  loading.value = false;
   if (updateRoute) {
     await syncRoutePath("");
   }
