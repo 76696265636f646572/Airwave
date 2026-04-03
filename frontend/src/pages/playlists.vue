@@ -1,5 +1,5 @@
 <template>
-  <section class="playlists-page min-h-0 rounded-xl border border-neutral-700 p-4 surface-panel">
+  <section class="playlists-page min-h-0 h-full rounded-xl border border-neutral-700 p-4 surface-panel">
     <SidebarPlaylists />
   </section>
 </template>

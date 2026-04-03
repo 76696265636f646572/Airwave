@@ -1,5 +1,5 @@
 <template>
-  <section class="min-h-0 min-w-0 overflow-auto rounded-xl border border-neutral-700 p-4 md:p-6 surface-panel">
+  <section class="min-h-0 h-full min-w-0 overflow-auto rounded-xl border border-neutral-700 p-4 md:p-6 surface-panel">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold tracking-tight md:text-3xl">Media Browser</h1>
