@@ -423,6 +423,7 @@ class StreamEngine:
             if cached is not None:
                 return cached
         if self._item_uses_direct_ffmpeg(queue_item):
+            direct_stream_url = queue_item.normalized_url or queue_item.source_url
             resolved = ResolvedTrack(
                 source_url=queue_item.source_url,
                 normalized_url=queue_item.normalized_url,
@@ -430,7 +431,7 @@ class StreamEngine:
                 channel=queue_item.channel,
                 duration_seconds=queue_item.duration_seconds,
                 thumbnail_url=queue_item.thumbnail_url,
-                stream_url=queue_item.source_url,
+                stream_url=direct_stream_url,
                 provider=queue_item.provider or "direct",
                 provider_item_id=queue_item.provider_item_id,
                 is_live=False,

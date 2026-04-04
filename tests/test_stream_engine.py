@@ -589,7 +589,7 @@ def test_stream_engine_direct_media_uses_spawn_for_source_not_ytdlp_stdin(tmp_pa
     created = repo.enqueue_items(
         [
             NewQueueItem(
-                source_url="https://cdn.example.com/track.mp3",
+                source_url="https://CDN.example.com/track.mp3#frag",
                 normalized_url="https://cdn.example.com/track.mp3",
                 provider="direct",
                 source_type="remote_audio",
