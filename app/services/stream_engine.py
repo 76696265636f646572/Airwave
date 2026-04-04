@@ -15,6 +15,7 @@ from typing import Callable, Generator
 
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
+from app.lib.tools import format_byte_size
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
 from app.services.yt_dlp_service import ResolvedTrack, YtDlpError, YtDlpService
 
@@ -558,6 +559,8 @@ class StreamEngine:
             )
             elapsed_seconds = stats["elapsed_seconds"]
             duration_seconds = stats["duration_seconds"]
+            total_bytes = stats["total_bytes_streamed"]
+            total_human = format_byte_size(total_bytes)
             if elapsed_seconds is None:
                 progress_label = "n/a"
             elif duration_seconds:
@@ -565,7 +568,7 @@ class StreamEngine:
             else:
                 progress_label = f"{elapsed_seconds:.1f}s"
             logger.info(
-                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s total_chunks=%s completed=%s skipped=%s failed=%s",
+                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s (%s) total_chunks=%s completed=%s skipped=%s failed=%s",
                 stats["mode"],
                 track_label,
                 progress_label,
@@ -574,7 +577,8 @@ class StreamEngine:
                 stats["cached_track_count"],
                 stats["recent_cache_count"],
                 stats["prefetched_audio_count"],
-                stats["total_bytes_streamed"],
+                total_bytes,
+                total_human,
                 stats["total_chunks_streamed"],
                 stats["tracks_completed"],
                 stats["tracks_skipped"],
