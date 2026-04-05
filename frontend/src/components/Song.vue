@@ -3,7 +3,7 @@
     <div
       v-if="thumbnailSrc && mode == 'search'"
       class="relative h-14 w-24 shrink-0 overflow-hidden rounded surface-elevated"
-      @click="playNow(item.source_url)"
+      @click="playNow(item.provider, item.source_url)"
     >
       <img
         :src="thumbnailSrc"
