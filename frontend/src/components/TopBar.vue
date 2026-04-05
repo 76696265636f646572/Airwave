@@ -21,7 +21,7 @@
         <input
           v-model="unifiedInput"
           type="text"
-          placeholder="Search or paste YouTube, SoundCloud, Mixcloud, or Spotify playlist URL..."
+          placeholder="Search or paste URL (YouTube, SoundCloud, Mixcloud, Spotify playlist, or direct MP3/audio link)…"
           class="h-10 w-full min-w-0 flex-1 rounded-md border px-3 text-sm sm:min-w-[400px] sm:max-w-[800px] surface-input"
         />
         <template v-if="isUrlInput">
@@ -40,10 +40,14 @@
               v-if="showUrlActionDropdown"
               :items="actionDropdownItems"
               :ui="{ separator: 'hidden' }"
-              @update:open="(open) => !open && playlistSelector.resetSearch()"
+              @update:open="(open) => !open && resetSearch()"
             >
               <template #playlist-filter>
-                <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                <PlaylistSelectorFilter
+                  v-model="playlistSearchTerm"
+                  placeholder="Find a playlist"
+                  @playlist-created="onImportUrlPlaylistCreated"
+                />
               </template>
               <UButton type="button" color="primary" variant="solid" size="md" class="rounded-l-none border-l-0">
                 <UIcon name="i-bi-chevron-down" class="size-4" />
@@ -63,7 +67,16 @@
           Search
         </UButton>
       </form>
-      <div class="flex flex-1 justify-end min-w-0">
+      <div class="flex flex-1 justify-end min-w-0 items-center gap-1">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="ghost"
+          icon="i-bi-folder-fill"
+          class="flex-shrink-0"
+          aria-label="Media Browser"
+          @click="router.push('/explorer')"
+        />
         <UButton
           type="button"
           color="neutral"
@@ -85,6 +98,15 @@
           type="button"
           color="neutral"
           variant="ghost"
+          icon="i-bi-folder-fill"
+          class="h-10"
+          aria-label="Media Browser"
+          @click="router.push('/explorer')"
+        />
+        <UButton
+          type="button"
+          color="neutral"
+          variant="ghost"
           icon="i-bi-plus-circle-fill"
           class="h-10"
           aria-label="Add URL"
@@ -102,7 +124,7 @@
             <input
               v-model="unifiedInput"
               type="text"
-              placeholder="Search or paste YouTube, SoundCloud, Mixcloud, or Spotify playlist URL..."
+              placeholder="Search or paste URL (YouTube, SoundCloud, Mixcloud, Spotify playlist, or direct MP3/audio link)…"
               class="h-11 w-full rounded-md border px-3 text-sm surface-input"
             />
             <div class="flex w-full">
@@ -114,10 +136,14 @@
                   v-if="showUrlActionDropdown"
                   :items="actionDropdownItems"
                   :ui="{ separator: 'hidden' }"
-                  @update:open="(open) => !open && playlistSelector.resetSearch()"
+                  @update:open="(open) => !open && resetSearch()"
                 >
                   <template #playlist-filter>
-                    <PlaylistSelectorFilter v-model="playlistSelector.playlistSearchTerm" placeholder="Find a playlist" />
+                    <PlaylistSelectorFilter
+                      v-model="playlistSearchTerm"
+                      placeholder="Find a playlist"
+                      @playlist-created="onImportUrlPlaylistCreated"
+                    />
                   </template>
                   <UButton type="button" color="primary" variant="solid" class="rounded-l-none border-l-0">
                     <span aria-hidden="true">|</span>
@@ -140,6 +166,7 @@
       </template>
     </UModal>
     </template>
+
   </header>
 </template>
 
@@ -159,7 +186,7 @@ const addUrlSheetOpen = ref(false);
 const router = useRouter();
 const route = useRoute();
 const { queue, playlists, addUrl, playUrl, importPlaylistUrl, startSpotifyImportFromUrl, importPlaylistIntoPlaylist, addUrlToPlaylist } = useLibraryState();
-const playlistSelector = usePlaylistSelector(playlists);
+const { playlistSearchTerm, filteredPlaylists, resetSearch } = usePlaylistSelector(playlists);
 const { searchText, onSearchTextChange, onSearchSubmit } = useUiState();
 
 const ACTION_IDS = {
@@ -340,26 +367,15 @@ const actionDropdownItems = computed(() => {
     },
   }));
 
-  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value) && playlists.value.length > 0) {
+  if (isPlaylistOrRadioContext.value && Array.isArray(playlists.value)) {
     const rawUrl = unifiedInput.value.trim();
     const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
     const playlistChildren = [
       { type: "label", slot: "playlist-filter" },
-      ...playlistSelector.filteredPlaylists.value.map((p) => ({
+      ...filteredPlaylists.value.map((p) => ({
         label: p.title,
         onSelect: () => {
           importPlaylistIntoPlaylist(urlForPlaylist, p.id);
-          unifiedInput.value = "";
-          addUrlSheetOpen.value = false;
-        },
-      })),
-    ];
-    const addToPlaylistChildren = [
-      { type: "label", slot: "playlist-filter" },
-      ...playlistSelector.filteredPlaylists.value.map((p) => ({
-        label: p.title,
-        onSelect: () => {
-          addUrlToPlaylist(p.id, urlForPlaylist);
           unifiedInput.value = "";
           addUrlSheetOpen.value = false;
         },
@@ -409,6 +425,16 @@ function runAction(actionId, closeAfter = false, urlOverride = null) {
 
 function runPrimaryAction(closeAfter = false) {
   runAction(defaultActionId.value, closeAfter, unifiedInput.value.trim());
+}
+
+function onImportUrlPlaylistCreated(created) {
+  if (created?.id == null) return;
+  const rawUrl = unifiedInput.value.trim();
+  if (!rawUrl) return;
+  const urlForPlaylist = isStartRadioUrl(rawUrl) ? rawUrl : getCanonicalPlaylistUrl(rawUrl);
+  importPlaylistIntoPlaylist(urlForPlaylist, created.id);
+  unifiedInput.value = "";
+  addUrlSheetOpen.value = false;
 }
 
 function onUnifiedSubmit(closeAfter = false) {

@@ -3,7 +3,7 @@
     <div
       v-if="thumbnailSrc && mode == 'search'"
       class="relative h-14 w-24 shrink-0 overflow-hidden rounded surface-elevated"
-      @click="playNow(item.source_url)"
+      @click="playNow(item.provider, item.source_url)"
     >
       <img
         :src="thumbnailSrc"
@@ -43,7 +43,11 @@
     >
       <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && resetSearch()">
         <template #playlist-filter>
-          <PlaylistSelectorFilter v-model="playlistSearchTerm" placeholder="Find a playlist" />
+          <PlaylistSelectorFilter
+            v-model="playlistSearchTerm"
+            placeholder="Find a playlist"
+            @playlist-created="onPlaylistCreated"
+          />
         </template>
         <UButton
           class="cursor-pointer"
@@ -63,7 +67,6 @@
 import { computed } from "vue";
 
 import PlaylistSelectorFilter from "./PlaylistSelectorFilter.vue";
-import { fetchJson } from "../composables/useApi";
 import { formatDuration } from "../composables/useDuration";
 import { useLibraryState } from "../composables/useLibraryState";
 import { useNotifications } from "../composables/useNotifications";
@@ -93,11 +96,10 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["deleted"]);
 
 const { playlistSearchTerm, filteredPlaylists, resetSearch } = usePlaylistSelector(() => props.playlists);
-const { notifySuccess, notifyError } = useNotifications();
-const { addUrlToPlaylist } = useLibraryState();
+const { notifyError } = useNotifications();
+const { playUrl, addUrl, addUrlToPlaylist, addLocalPathToPlaylist,addLocalPath, playLocalPath, removeFromQueue, removeFromPlaylist } = useLibraryState();
 
 const thumbnailSrc = computed(() => {
   const item = props.item;
@@ -117,105 +119,109 @@ const providerLabel = computed(() => {
   return "";
 });
 
-async function addToQueue(url) {
+async function addToQueue(provider, url) {
   if (!url) return;
   try {
-    await fetchJson("/api/queue/add", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    notifySuccess("Added to queue", "URL added successfully.");
+    if (provider === "local") {
+      await addLocalPath(url);
+    } else {
+      await addUrl(url);
+    }
   } catch (error) {
-    notifyError("Could not add URL", error);
+    notifyError("Could not add to queue", error);
   }
 }
 
-async function playNow(url) {
+async function playNow(provider, url) {
   if (!url) return;
-  try {
-    await fetchJson("/api/queue/play-now", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    notifySuccess("Playing now", "URL queued and playback started.");
-  } catch (error) {
-    notifyError("Could not play URL", error);
+  if (provider === "local") {
+    await playLocalPath(url);
+  } else {
+    await playUrl(url);
   }
 }
 
-async function addToPlaylist(playlistId, url) {
+async function addToPlaylist(playlistId, provider, url) {
   if (!playlistId || !url) return;
   try {
-    await addUrlToPlaylist(playlistId, url);
+    if (provider === "local") {
+      await addLocalPathToPlaylist(playlistId, url);
+    } else {
+      await addUrlToPlaylist(playlistId, url);
+    }
   } finally {
     resetSearch();
   }
 }
 
-async function removeFromPlaylist(entryId) {
-  if (!entryId) return;
-  try {
-    const response = await fetch(`/api/playlists/entries/${entryId}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(detail || `Request failed: ${response.status}`);
-    }
-    notifySuccess("Removed from playlist", "Item removed.");
-    emit("deleted");
-  } catch (error) {
-    notifyError("Could not remove from playlist", error);
-  }
+async function onPlaylistCreated(created) {
+  if (created?.id == null) return;
+  await addToPlaylist(created.id, props.item?.provider, props.item?.source_url);
 }
+
 
 const dropdownItems = computed(() => {
   const url = props.item?.source_url;
+  const provider = props.item?.provider;
   const hasUrl = !!url;
-  const items = [];
-
-  if (hasUrl) {
-    items.push(
+  const items = [[]];
+  if(hasUrl) {
+    items[0].push(
       {
         label: "Play now",
         icon: "i-bi-play-fill",
-        onSelect: () => playNow(url),
-      },
-      {
-        label: "Add to queue",
-        icon: "i-bi-music-note-list",
-        onSelect: () => addToQueue(url),
+        onSelect: () => playNow(provider, url),
       },
     );
+  
+    if(props.mode !== "queue") {
+      items[0].push(
+        {
+          label: "Add to queue",
+          icon: "i-bi-music-note-list",
+          onSelect: () => addToQueue(provider, url),
+        },
+      );
+    }
+    if(props.mode === "queue") {
+      items[0].push(
+        {
+          label: "Remove from queue",
+          icon: "i-bi-trash-fill",
+          color: "error",
+          onSelect: () => removeFromQueue(props.item.id),
+        },
+      );
+    }
   }
+ 
   const addToPlaylistChildren = [
     { type: "label", slot: "playlist-filter" },
     ...filteredPlaylists.value.map((p) => ({
       label: p.title,
-      onSelect: () => addToPlaylist(p.id, url),
+      onSelect: () => addToPlaylist(p.id, provider, url),
     })),
   ];
 
-  if (hasUrl && props.playlists.length > 0) {
-    items.push(
+  if (hasUrl) {
+    items.push([
       {
         label: "Add to playlist",
         icon: "i-bi-plus",
         children: [addToPlaylistChildren],
       },
-    );
+    ]);
   }
 
   if (props.playlistId && props.entryId != null) {
-    items.push(
+    items.push([
       {
         label: "Remove from playlist",
         icon: "i-bi-trash-fill",
+        color: "error",
         onSelect: () => removeFromPlaylist(props.entryId),
       },
-    );
+    ]);
   }
   return items;
 });

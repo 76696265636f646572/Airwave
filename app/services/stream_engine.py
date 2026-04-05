@@ -15,6 +15,7 @@ from typing import Callable, Generator
 
 from app.db.models import QueueStatus
 from app.db.repository import NewQueueItem, Repository
+from app.lib.tools import format_byte_size
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
 from app.services.yt_dlp_service import ResolvedTrack, YtDlpError, YtDlpService
 
@@ -409,11 +410,36 @@ class StreamEngine:
                 return
             self._resolved_track_cache[item_id] = cached
 
+    @staticmethod
+    def _item_uses_direct_ffmpeg(queue_item) -> bool:
+        provider = getattr(queue_item, "provider", None)
+        if provider in ("direct", "local"):
+            return True
+        source_type = getattr(queue_item, "source_type", None)
+        return source_type in ("remote_audio", "local_file")
+
     def _resolve_track_for_item(self, queue_item, *, force_refresh: bool) -> ResolvedTrack:
         if not force_refresh:
             cached = self._get_cached_resolved_track(queue_item.id)
             if cached is not None:
                 return cached
+        if self._item_uses_direct_ffmpeg(queue_item):
+            direct_stream_url = queue_item.normalized_url or queue_item.source_url
+            resolved = ResolvedTrack(
+                source_url=queue_item.source_url,
+                normalized_url=queue_item.normalized_url,
+                title=queue_item.title,
+                channel=queue_item.channel,
+                duration_seconds=queue_item.duration_seconds,
+                thumbnail_url=queue_item.thumbnail_url,
+                stream_url=direct_stream_url,
+                provider=queue_item.provider or "direct",
+                provider_item_id=queue_item.provider_item_id,
+                is_live=False,
+                item_source_type=getattr(queue_item, "source_type", None),
+            )
+            self._cache_resolved_track(queue_item.id, resolved)
+            return resolved
         resolved = self.yt_dlp_service.resolve_video(queue_item.source_url, force_refresh=force_refresh)
         self._cache_resolved_track(queue_item.id, resolved)
         return resolved
@@ -424,6 +450,14 @@ class StreamEngine:
             queued_items = [item for item in queue_items if item.status == QueueStatus.queued][: self._prefetch_next_count]
             for queued_item in queued_items:
                 if self._get_cached_resolved_track(queued_item.id) is not None:
+                    continue
+                if self._item_uses_direct_ffmpeg(queued_item):
+                    try:
+                        resolved = self._resolve_track_for_item(queued_item, force_refresh=False)
+                    except Exception:
+                        logger.debug("Failed prefetching direct item %s", queued_item.id, exc_info=True)
+                        continue
+                    self._remember_recent_resolved_track(resolved)
                     continue
                 try:
                     resolved = self.yt_dlp_service.resolve_video(queued_item.source_url)
@@ -525,6 +559,8 @@ class StreamEngine:
             )
             elapsed_seconds = stats["elapsed_seconds"]
             duration_seconds = stats["duration_seconds"]
+            total_bytes = stats["total_bytes_streamed"]
+            total_human = format_byte_size(total_bytes)
             if elapsed_seconds is None:
                 progress_label = "n/a"
             elif duration_seconds:
@@ -532,7 +568,7 @@ class StreamEngine:
             else:
                 progress_label = f"{elapsed_seconds:.1f}s"
             logger.info(
-                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s total_chunks=%s completed=%s skipped=%s failed=%s",
+                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s (%s) total_chunks=%s completed=%s skipped=%s failed=%s",
                 stats["mode"],
                 track_label,
                 progress_label,
@@ -541,7 +577,8 @@ class StreamEngine:
                 stats["cached_track_count"],
                 stats["recent_cache_count"],
                 stats["prefetched_audio_count"],
-                stats["total_bytes_streamed"],
+                total_bytes,
+                total_human,
                 stats["total_chunks_streamed"],
                 stats["tracks_completed"],
                 stats["tracks_skipped"],
@@ -796,7 +833,9 @@ class StreamEngine:
                             source_process = None
                             process = spawn_for_source(prefetched_audio_path, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
-                        elif callable(spawn_for_source) and seek_offset > 0:
+                        elif callable(spawn_for_source) and (
+                            seek_offset > 0 or self._item_uses_direct_ffmpeg(queue_item)
+                        ):
                             source_process = None
                             process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
@@ -807,6 +846,11 @@ class StreamEngine:
                             if source_process.stdout is not None:
                                 source_process.stdout.close()
                             self._set_active_processes(process, source_process)
+
+                        # Trigger upcoming prefetch as soon as playback pipeline is ready.
+                        # Relying only on the first emitted chunk can miss/delay prefetch
+                        # for some direct/local playback paths.
+                        self._trigger_prefetch_upcoming_tracks()
 
                         attempt_chunks_sent = 0
                         attempt_bytes_sent = 0

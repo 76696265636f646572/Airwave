@@ -18,10 +18,10 @@
 
         <!-- Below xl: right sidebar overlays main; xl+: children slot into 3-column grid (display:contents) -->
         <div class="main-and-right relative min-h-0 min-w-0 flex-1 flex flex-col xl:contents">
-          <main class="main-content min-h-0 w-full flex-none md:flex-1 flex min-w-0 flex-col overflow-visible md:overflow-hidden">
+          <main class="main-content min-h-0 h-full w-full flex-none md:flex-1 flex min-w-0 flex-col overflow-visible md:overflow-hidden">
             <!-- Desktop: single RouterView -->
             <template v-if="!isMobile">
-              <div class="min-h-0 flex-1 overflow-auto">
+              <div class="min-h-0 h-full flex-1 overflow-auto">
                 <RouterView v-slot="{ Component }">
                   <component :is="Component" />
                 </RouterView>

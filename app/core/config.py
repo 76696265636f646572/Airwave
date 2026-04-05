@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import ipaddress
 import socket
 from functools import lru_cache
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
     stream_path: str = "/stream/live.mp3"
     yt_dlp_path: str = "./bin/yt-dlp"
     ffmpeg_path: str = "./bin/ffmpeg"
+    ffprobe_path: str = "./bin/ffprobe"
     deno_path: str = "./bin/deno"
     mp3_bitrate: str = "320k"
     chunk_size: int = 256
@@ -85,7 +87,30 @@ class Settings(BaseSettings):
     stream_stats_log_seconds: float = Field(default=15.0, ge=1.0, le=300.0)
     history_limit: int = 50
     log_level: str = Field(default="INFO", description="Logging level (debug, info, warning, error)")
+    # Must remain `str` (not list[str]): pydantic-settings JSON-decodes list fields from env before
+    # validators run, so values like `/mnt` or `a,b` would raise. Parse via local_media_roots_list.
+    local_media_roots: str = Field(
+        default="",
+        description="Comma-separated paths, or a JSON array string, for AIRWAVE_LOCAL_MEDIA_ROOTS",
+    )
 
+    @staticmethod
+    def _parse_local_media_roots_input(raw: str) -> list[str]:
+        text = (raw or "").strip()
+        if not text:
+            return []
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return [p.strip() for p in text.split(",") if p.strip()]
+            if isinstance(parsed, list):
+                return [str(v).strip() for v in parsed if str(v).strip()]
+        return [p.strip() for p in text.split(",") if p.strip()]
+
+    @property
+    def local_media_roots_list(self) -> list[str]:
+        return self._parse_local_media_roots_input(self.local_media_roots)
 
     @property
     def stream_url(self) -> str:

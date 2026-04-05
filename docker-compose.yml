@@ -18,9 +18,14 @@ services:
     network_mode: host
     volumes:
       - ./data:/app/data
+      # Mount host directories into the container and set paths inside the container.
+      #- /mnt/music:/mnt/music
+      #- /mnt/videos:/mnt/videos
+      
     # Optional env (uncomment as needed):
     # environment:
     #   AIRWAVE_PUBLIC_BASE_URL: "http://192.168.1.50:8000"
+    #   AIRWAVE_LOCAL_MEDIA_ROOTS: "/mnt/music,/mnt/videos"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s

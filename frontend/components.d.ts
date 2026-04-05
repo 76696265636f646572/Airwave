@@ -12,6 +12,9 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     DuplicateImportModal: typeof import('./src/components/DuplicateImportModal.vue')['default']
+    ExplorerEntryMenu: typeof import('./src/components/explorer/ExplorerEntryMenu.vue')['default']
+    ExplorerFile: typeof import('./src/components/explorer/ExplorerFile.vue')['default']
+    ExplorerFolder: typeof import('./src/components/explorer/ExplorerFolder.vue')['default']
     GeneralSettingsPanel: typeof import('./src/components/settings/GeneralSettingsPanel.vue')['default']
     HistoryPanel: typeof import('./src/components/HistoryPanel.vue')['default']
     MobileNavBar: typeof import('./src/components/MobileNavBar.vue')['default']

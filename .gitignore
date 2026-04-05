@@ -14,9 +14,7 @@ dist/
 data/airwave.db
 data/mytube.db
 
-bin/deno
-bin/ffmpeg
-bin/yt-dlp
+bin/
 node_modules/
 app/static/dist/
 .cursor/

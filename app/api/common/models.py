@@ -14,6 +14,17 @@ class AddUrlRequest(BaseModel):
     import_mode: ImportMode | None = None
 
 
+class AddLocalPathRequest(BaseModel):
+    path: str = Field(min_length=1)
+    import_mode: ImportMode | None = None
+
+
+class AddLocalFolderRequest(BaseModel):
+    path: str = Field(min_length=1)
+    recursive: bool = True
+    import_mode: ImportMode | None = None
+
+
 class ReorderRequest(BaseModel):
     new_position: int
 
@@ -105,7 +116,7 @@ class SeekRequest(BaseModel):
 
 
 class InstallBinaryRequest(BaseModel):
-    name: str = Field(pattern="^(yt-dlp|ffmpeg|deno)$")
+    name: str = Field(pattern="^(yt-dlp|ffmpeg|ffprobe|deno)$")
     stop_stream_first: bool = False
 
 

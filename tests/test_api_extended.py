@@ -642,9 +642,9 @@ def test_binaries_endpoints(tmp_path):
         assert resp.status_code == 200
         payload = resp.json()
         assert "binaries" in payload
-        assert len(payload["binaries"]) == 3
+        assert len(payload["binaries"]) == 4
         names = {b["name"] for b in payload["binaries"]}
-        assert names == {"yt-dlp", "ffmpeg", "deno"}
+        assert names == {"yt-dlp", "ffmpeg", "ffprobe", "deno"}
         for b in payload["binaries"]:
             assert "path" in b
             assert "version" in b
@@ -668,6 +668,8 @@ def test_binaries_in_use_when_playing(tmp_path):
         assert yt_dlp["in_use"] is True
         deno = next(b for b in payload["binaries"] if b["name"] == "deno")
         assert deno["in_use"] is False
+        ffprobe = next(b for b in payload["binaries"] if b["name"] == "ffprobe")
+        assert ffprobe["in_use"] is False
 
 
 def test_binaries_updates_endpoint(tmp_path):
@@ -769,6 +771,15 @@ def test_binaries_install_rejects_invalid_name(tmp_path):
     with client:
         resp = client.post("/api/binaries/install", json={"name": "invalid"})
         assert resp.status_code == 422
+
+
+def test_binaries_install_accepts_ffprobe_name(tmp_path):
+    client, app = _build_test_client(tmp_path)
+    with client:
+        with patch.object(app.state.binaries_service, "install") as mock_install:
+            resp = client.post("/api/binaries/install", json={"name": "ffprobe"})
+            assert resp.status_code == 200
+            mock_install.assert_called_once_with("ffprobe")
 
 
 def test_sonos_endpoints(tmp_path):

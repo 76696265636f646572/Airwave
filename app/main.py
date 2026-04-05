@@ -16,8 +16,8 @@ from app.core.logging import configure_logging
 from app.db.repository import Repository
 from app.services.binaries_service import BinariesService
 from app.services.ffmpeg_pipeline import FfmpegPipeline
-from app.services.ffmpeg_setup import ensure_ffmpeg_path
 from app.services.playlist_service import PlaylistService
+from app.services.source_resolver import MediaSourceResolver
 from app.services.spotify_import_service import SpotifyImportService
 from app.services.sonos_service import SonosService
 from app.services.stream_engine import StreamEngine
@@ -59,14 +59,14 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     configure_logging(settings.log_level)
 
     repository = Repository(settings.db_url)
-    ffmpeg_path = ensure_ffmpeg_path(settings.ffmpeg_path)
+    ffmpeg_path = settings.ffmpeg_path
     yt_dlp_service = YtDlpService(
         settings.yt_dlp_path,
         ffmpeg_path,
         settings.deno_path,
         repository=repository,
     )
-    ffmpeg_pipeline = FfmpegPipeline(ffmpeg_path, bitrate=settings.mp3_bitrate)
+    ffmpeg_pipeline = FfmpegPipeline(ffmpeg_path, settings.ffprobe_path, bitrate=settings.mp3_bitrate)
     ui_events = UiEventBroker()
 
     def notify_ui_state_changed() -> None:
@@ -82,12 +82,14 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         stats_log_seconds=settings.stream_stats_log_seconds,
         on_state_change=notify_ui_state_changed,
     )
-    playlist_service = PlaylistService(repository, yt_dlp_service)
+    source_resolver = MediaSourceResolver(ffmpeg_pipeline, settings.local_media_roots_list)
+    playlist_service = PlaylistService(repository, yt_dlp_service, source_resolver)
     spotify_import_service = SpotifyImportService(repository, yt_dlp_service)
     sonos_service = SonosService()
     binaries_service = BinariesService(
         yt_dlp_path=settings.yt_dlp_path,
         ffmpeg_path=settings.ffmpeg_path,
+        ffprobe_path=settings.ffprobe_path,
         deno_path=settings.deno_path,
     )
 
@@ -108,6 +110,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         app.state.ffmpeg_pipeline = ffmpeg_pipeline
         app.state.stream_engine = stream_engine
         app.state.playlist_service = playlist_service
+        app.state.source_resolver = source_resolver
         app.state.spotify_import_service = spotify_import_service
         app.state.sonos_service = sonos_service
         app.state.binaries_service = binaries_service
