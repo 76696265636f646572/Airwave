@@ -54,6 +54,30 @@ class Repository:
         self._ensure_playlist_entry_spotify_import_searched_column()
         self._ensure_playlist_can_edit_column()
         self._ensure_playlist_can_delete_column()
+        self._ensure_liked_songs_playlist_entry()
+
+
+    def _ensure_liked_songs_playlist_entry(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with Session(self.engine) as session:
+            existing = session.execute(select(Playlist.id).where(Playlist.title == "Liked Songs")).scalar_one_or_none()
+            if existing is not None:
+                return
+
+            playlist = Playlist(
+                title="Liked Songs",
+                channel="Liked Songs",
+                thumbnail_url="/static/images/liked_song.png",
+                can_edit=False,
+                can_delete=False,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                source_url="custom://liked_songs",
+            )
+            session.add(playlist)
+            session.commit()
+            return
 
     def _ensure_playlist_can_edit_column(self) -> None:
         if self.engine.url.get_backend_name() != "sqlite":
