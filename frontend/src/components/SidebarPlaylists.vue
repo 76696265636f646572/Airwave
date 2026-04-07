@@ -309,7 +309,7 @@ const sortOptions = computed(() => {
 });
 
 const canDragReorder = computed(() => {
-  return sortMode.value === "custom" && !playlistSearchTerm.value.trim();
+  return sortMode.value === "custom" && !playlistSearchTerm.value.trim() && playlistSearchTerm.value.length === 0;
 });
 
 function onPlaylistClick(playlist) {
