@@ -480,6 +480,50 @@ export function useLibraryState() {
     }
   }
 
+  async function likeCurrentSong() {
+    try {
+      const result = await fetchJson("/api/state/like", { method: "POST" });
+      const { playbackState, applyPlaybackState } = usePlaybackState();
+      applyPlaybackState({
+        ...playbackState.value,
+        ...(result?.state || {}),
+        now_playing_is_liked: true,
+      });
+      if (result?.skipped_duplicates) {
+        notifySuccess("Already liked", "This track is already in Liked Songs.");
+      } else {
+        notifySuccess("Liked", "Added to Liked Songs.");
+      }
+    } catch (error) {
+      notifyError("Could not like song", error);
+    }
+  }
+
+  async function unlikeCurrentSong() {
+    try {
+      const result = await fetchJson("/api/state/unlike", { method: "POST" });
+      const { playbackState, applyPlaybackState } = usePlaybackState();
+      applyPlaybackState({
+        ...playbackState.value,
+        ...(result?.state || {}),
+        now_playing_is_liked: false,
+      });
+      if ((result?.removed ?? 0) > 0) {
+        notifySuccess("Unliked", "Removed from Liked Songs.");
+      } else {
+        notifySuccess("Not in Liked Songs", "This track was not in Liked Songs.");
+      }
+    } catch (error) {
+      notifyError("Could not unlike song", error);
+    }
+  }
+
+  async function toggleLikeCurrentSong() {
+    const { playbackState } = usePlaybackState();
+    if (playbackState.value?.now_playing_is_liked) return unlikeCurrentSong();
+    return likeCurrentSong();
+  }
+
   async function fetchLocalRoots() {
     return fetchJson("/api/media/local/roots");
   }
@@ -669,6 +713,9 @@ export function useLibraryState() {
     setRepeatMode,
     setShuffleEnabled,
     seekToPercent,
+    likeCurrentSong,
+    unlikeCurrentSong,
+    toggleLikeCurrentSong,
     fetchLocalRoots,
     browseLocalDirectory,
     addLocalPath,

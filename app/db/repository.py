@@ -753,3 +753,61 @@ class Repository:
             setting = session.get(Setting, key)
             if setting is not None:
                 session.delete(setting)
+
+    def get_playlist_by_source_url(self, source_url: str) -> Optional[Playlist]:
+        with self.session() as session:
+            return session.scalar(select(Playlist).where(Playlist.source_url == source_url))
+
+    def playlist_contains_track(
+        self,
+        playlist_id: uuid.UUID,
+        *,
+        normalized_url: str | None,
+        provider_item_id: str | None,
+    ) -> bool:
+        norm = (normalized_url or "").strip()
+        pid = (provider_item_id or "").strip() or None
+        if not norm and not pid:
+            return False
+        with self.session() as session:
+            stmt = select(func.count(PlaylistEntry.id)).where(PlaylistEntry.playlist_id == playlist_id)
+            if norm:
+                stmt = stmt.where(PlaylistEntry.normalized_url == norm)
+            elif pid:
+                stmt = stmt.where(PlaylistEntry.provider_item_id == pid)
+            count = session.scalar(stmt)
+            return bool(count and int(count) > 0)
+
+    def remove_playlist_track(
+        self,
+        playlist_id: uuid.UUID,
+        *,
+        normalized_url: str | None,
+        provider_item_id: str | None,
+    ) -> int:
+        norm = (normalized_url or "").strip()
+        pid = (provider_item_id or "").strip() or None
+        if not norm and not pid:
+            return 0
+        with self.session() as session:
+            playlist = session.get(Playlist, playlist_id)
+            if playlist is None:
+                return 0
+            stmt = delete(PlaylistEntry).where(PlaylistEntry.playlist_id == playlist_id)
+            if norm:
+                stmt = stmt.where(PlaylistEntry.normalized_url == norm)
+            elif pid:
+                stmt = stmt.where(PlaylistEntry.provider_item_id == pid)
+            result = session.execute(stmt)
+            removed = int(result.rowcount or 0)
+            if removed > 0:
+                playlist.entry_count = max(
+                    0,
+                    int(
+                        session.scalar(
+                            select(func.count(PlaylistEntry.id)).where(PlaylistEntry.playlist_id == playlist_id)
+                        )
+                        or 0
+                    ),
+                )
+            return removed
