@@ -168,6 +168,7 @@ const dropdownItems = computed(() => {
     ];
   }
 
+  const pinned = !!props.playlist.pinned;
   const items = [
     [
       {
@@ -182,7 +183,12 @@ const dropdownItems = computed(() => {
         class: "cursor-pointer",
         onSelect: () => queuePlaylist(props.playlist.id),
       },
-      
+      {
+        label: pinned ? "Unpin" : "Pin",
+        icon: pinned ? "i-bi-pin" : "i-bi-pin-fill",
+        class: "cursor-pointer",
+        onSelect: () => setPlaylistPinned(props.playlist.id, !pinned),
+      },
     ],
   ];
 
@@ -205,28 +211,27 @@ const dropdownItems = computed(() => {
     ]);
   }
 
-  const pinned = !!props.playlist.pinned;
-  items.push([
-    {
+  const canEdit = props.playlist.can_edit;
+  const canDelete = props.playlist.can_delete;
+  const allowedActions = [];
+  if (canEdit) {
+    allowedActions.push({
       label: "Edit",
       icon: "i-bi-pencil-fill",
       class: "cursor-pointer",
       onSelect: openEditModal,
-    },
-    {
-      label: pinned ? "Unpin" : "Pin",
-      icon: pinned ? "i-bi-pin" : "i-bi-pin-fill",
-      class: "cursor-pointer",
-      onSelect: () => setPlaylistPinned(props.playlist.id, !pinned),
-    },
-    {
+    });
+  }
+  if (canDelete) {
+    allowedActions.push({
       label: "Delete",
       icon: "i-bi-trash-fill",
       class: "cursor-pointer",
       onSelect: openDeleteModal,
       color: "error",
-    },
-  ]);
+    });
+  }
+  items.push(allowedActions);
   return items;
 });
 

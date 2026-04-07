@@ -149,6 +149,8 @@ def test_update_playlist_rename_and_pin(tmp_path):
     pid = created["id"]
     assert created["title"] == "Original"
     assert created["pinned"] is False
+    assert created["can_edit"] is True
+    assert created["can_delete"] is True
     assert "provider" not in created
     assert "provider_item_id" not in created
     assert isinstance(created.get("created_at"), str)
@@ -178,6 +180,8 @@ def test_update_playlist_description(tmp_path):
     created = service.create_custom_playlist("My Playlist")
     pid = created["id"]
     assert created.get("description") is None
+    assert created["can_edit"] is True
+    assert created["can_delete"] is True
 
     updated = service.update_playlist(pid, description="A curated collection of favorites")
     assert updated["description"] == "A curated collection of favorites"
@@ -233,6 +237,8 @@ def test_list_playlists_merges_remote_youtube_playlists(tmp_path):
     assert playlists[0]["kind"] == "remote_youtube"
     assert playlists[0]["source_url"] == "https://www.youtube.com/playlist?list=PLremote1"
     assert playlists[0]["provider_item_id"] == "PLremote1"
+    assert playlists[0]["can_edit"] is False
+    assert playlists[0]["can_delete"] is False
     assert playlists[0].get("created_at") is None
     assert playlists[0].get("updated_at") is None
     assert playlists[0].get("last_played_at") is None

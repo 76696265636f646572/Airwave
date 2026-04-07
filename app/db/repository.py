@@ -52,6 +52,26 @@ class Repository:
         self._ensure_play_history_thumbnail_column()
         self._ensure_provider_columns()
         self._ensure_playlist_entry_spotify_import_searched_column()
+        self._ensure_playlist_can_edit_column()
+        self._ensure_playlist_can_delete_column()
+
+    def _ensure_playlist_can_edit_column(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with self.engine.begin() as conn:
+            column_rows = conn.execute(text("PRAGMA table_info(playlists)")).mappings().all()
+            column_names = {row["name"] for row in column_rows}
+            if "can_edit" not in column_names:
+                conn.execute(text("ALTER TABLE playlists ADD COLUMN can_edit INTEGER NOT NULL DEFAULT 1"))
+
+    def _ensure_playlist_can_delete_column(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with self.engine.begin() as conn:
+            column_rows = conn.execute(text("PRAGMA table_info(playlists)")).mappings().all()
+            column_names = {row["name"] for row in column_rows}
+            if "can_delete" not in column_names:
+                conn.execute(text("ALTER TABLE playlists ADD COLUMN can_delete INTEGER NOT NULL DEFAULT 1"))
 
     def _ensure_playlist_entry_spotify_import_searched_column(self) -> None:
         if self.engine.url.get_backend_name() != "sqlite":
