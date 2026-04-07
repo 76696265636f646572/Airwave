@@ -77,12 +77,12 @@
         </template>
         <!-- Search for songs in playlist -->
         <UInput
-          v-model="playlistSearchTerm"
+          v-model="songSearchTerm"
           type="text"
           placeholder="Search for songs in playlist"
         >
           
-          <template v-if="playlistSearchTerm?.length" #trailing>
+          <template v-if="songSearchTerm?.length" #trailing>
             <UButton
               color="neutral"
               variant="link"
@@ -90,7 +90,7 @@
               class="cursor-pointer"
               icon="i-lucide-circle-x"
               aria-label="Clear input"
-              @click="playlistSearchTerm = ''"
+              @click="songSearchTerm = ''"
             />
           </template>
         </UInput>
@@ -243,7 +243,7 @@ const totalDurationSeconds = computed(() =>
 const formattedTotalDuration = computed(() => formatTotalDuration(totalDurationSeconds.value));
 
 const filteredEntries = computed(() => {
-  return entries.value.filter((e) => e.title.toLowerCase().includes(playlistSearchTerm.value.toLowerCase()));
+  return entries.value.filter((e) => e.title.toLowerCase().includes(songSearchTerm.value.toLowerCase()));
 });
 
 const dropdownItems = computed(() => {
