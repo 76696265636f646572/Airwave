@@ -231,7 +231,9 @@ const dropdownItems = computed(() => {
       color: "error",
     });
   }
-  items.push(allowedActions);
+  if(allowedActions.length > 0) {
+    items.push(allowedActions);
+  }
   return items;
 });
 

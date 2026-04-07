@@ -145,7 +145,8 @@ def update_playlist(playlist_id: UUID, payload: UpdatePlaylistRequest, request: 
     playlist = _services(request)["repo"].get_playlist(playlist_id)
     if playlist is None:
         raise HTTPException(status_code=404, detail="Playlist not found")
-    if not getattr(playlist, "can_edit", True):
+    # Allow pinning/unpinning of playlists 
+    if not getattr(playlist, "can_edit", True) and payload.pinned is None:
         raise HTTPException(status_code=403, detail="Playlist cannot be edited")
     try:
         result = _services(request)["playlist"].update_playlist(
