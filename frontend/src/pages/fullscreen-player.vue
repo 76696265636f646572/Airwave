@@ -21,6 +21,18 @@
           </p>
           <p class="flex items-center justify-center gap-2 truncate text-lg font-bold">
             <span class="min-w-0 truncate">{{ playbackState.now_playing_title || "No active track" }}</span>
+            <UButton
+              type="button"
+              :disabled="!playbackState.now_playing_id"
+              :color="playbackState.now_playing_is_liked ? 'error' : 'neutral'"
+              variant="ghost"
+              size="xs"
+              class="shrink-0 p-0.5"
+              :aria-label="playbackState.now_playing_is_liked ? 'Unlike current song' : 'Like current song'"
+              @click.stop.prevent="toggleLikeCurrentSong"
+            >
+              <UIcon :name="playbackState.now_playing_is_liked ? 'i-bi-heart-fill' : 'i-bi-heart'" class="size-4" />
+            </UButton>
           </p>
         </div>
         <UButton
@@ -67,6 +79,18 @@
             <div class="min-w-0 flex-1 pt-1">
               <h2 class="flex items-center gap-2 text-xl font-bold leading-tight">
                 <span class="min-w-0 truncate">{{ playbackState.now_playing_title || "No active track" }}</span>
+                <UButton
+                  type="button"
+                  :disabled="!playbackState.now_playing_id"
+                  :color="playbackState.now_playing_is_liked ? 'error' : 'neutral'"
+                  variant="ghost"
+                  size="xs"
+                  class="shrink-0 p-0.5"
+                  :aria-label="playbackState.now_playing_is_liked ? 'Unlike current song' : 'Like current song'"
+                  @click.stop.prevent="toggleLikeCurrentSong"
+                >
+                  <UIcon :name="playbackState.now_playing_is_liked ? 'i-bi-heart-fill' : 'i-bi-heart'" class="size-4" />
+                </UButton>
               </h2>
               <UBadge v-if="playbackState.now_playing_is_live" label="Live" color="error" variant="soft" class="shrink-0" />
               <p class="mt-0.5 text-sm text-muted">
@@ -224,7 +248,7 @@ const {
 
 const router = useRouter();
 const { playbackState } = usePlaybackState();
-const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
+const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent, toggleLikeCurrentSong } = useLibraryState();
 
 const bgStyle = computed(() => {
   const url = playbackState.value.now_playing_thumbnail_url;

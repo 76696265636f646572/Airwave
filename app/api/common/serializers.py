@@ -32,8 +32,22 @@ def _prefer_youtube_hq_thumbnail(url: str | None) -> str | None:
     return url.replace("maxresdefault.jpg", "hqdefault.jpg").replace("maxresdefault.webp", "hqdefault.webp")
 
 
-def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
+def _serialize_state(engine: StreamEngine, stream_url: str, *, repo: Any | None = None) -> dict[str, Any]:
     progress = engine.playback_progress()
+    now_playing_is_liked = False
+    if repo is not None and getattr(engine.state, "now_playing_id", None) is not None:
+        try:
+            liked = repo.get_playlist_by_source_url("custom://liked_songs")
+            if liked is not None:
+                item = repo.get_item(engine.state.now_playing_id)
+                if item is not None:
+                    now_playing_is_liked = repo.playlist_contains_track(
+                        liked.id,
+                        normalized_url=getattr(item, "normalized_url", None),
+                        provider_item_id=getattr(item, "provider_item_id", None),
+                    )
+        except Exception:
+            now_playing_is_liked = False
     return {
         "mode": engine.state.mode.value,
         "paused": engine.state.paused,
@@ -47,6 +61,7 @@ def _serialize_state(engine: StreamEngine, stream_url: str) -> dict[str, Any]:
             getattr(engine.state, "now_playing_thumbnail_url", None)
         ),
         "now_playing_is_live": getattr(engine.state, "now_playing_is_live", False),
+        "now_playing_is_liked": now_playing_is_liked,
         "stream_url": stream_url,
         **progress,
     }
@@ -161,7 +176,7 @@ def build_ui_snapshot(app, base_url: str) -> dict[str, Any]:
     playlist = app.state.playlist_service
     return {
         "type": "snapshot",
-        "state": _serialize_state(engine, stream_url),
+        "state": _serialize_state(engine, stream_url, repo=repo),
         "queue": _serialize_queue_items(repo.list_queue()),
         "history": _serialize_history_rows(repo.list_history(limit=settings.history_limit)),
         "playlists": playlist.list_playlists(),

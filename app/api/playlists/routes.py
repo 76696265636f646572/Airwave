@@ -142,6 +142,12 @@ def queue_playlist(playlist_id: UUID, request: Request) -> dict[str, Any]:
 def update_playlist(playlist_id: UUID, payload: UpdatePlaylistRequest, request: Request) -> dict[str, Any]:
     if payload.title is None and payload.description is None and payload.pinned is None:
         raise HTTPException(status_code=400, detail="At least one of title, description, or pinned must be provided")
+    playlist = _services(request)["repo"].get_playlist(playlist_id)
+    if playlist is None:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    # Allow pinning/unpinning of playlists 
+    if not getattr(playlist, "can_edit", True) and payload.pinned is None:
+        raise HTTPException(status_code=403, detail="Playlist cannot be edited")
     try:
         result = _services(request)["playlist"].update_playlist(
             playlist_id,
@@ -159,6 +165,11 @@ def update_playlist(playlist_id: UUID, payload: UpdatePlaylistRequest, request: 
 
 @router.delete("/playlists/{playlist_id}")
 def delete_playlist(playlist_id: UUID, request: Request) -> dict[str, Any]:
+    playlist = _services(request)["repo"].get_playlist(playlist_id)
+    if playlist is None:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+    if not getattr(playlist, "can_delete", True):
+        raise HTTPException(status_code=403, detail="Playlist cannot be deleted")
     try:
         _services(request)["playlist"].delete_playlist(playlist_id)
         _publish_ui_snapshot(request)

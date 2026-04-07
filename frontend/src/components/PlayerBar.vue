@@ -23,6 +23,18 @@
         <div class="min-w-0 flex-1">
           <p class="flex items-center gap-1.5 truncate text-sm font-semibold">
             <span class="min-w-0 truncate">{{ playbackState.now_playing_title || "No active track" }}</span>
+            <UButton
+              type="button"
+              :disabled="!playbackState.now_playing_id"
+              :color="playbackState.now_playing_is_liked ? 'error' : 'neutral'"
+              variant="ghost"
+              size="xs"
+              class="shrink-0 p-0.5"
+              :aria-label="playbackState.now_playing_is_liked ? 'Unlike current song' : 'Like current song'"
+              @click.stop.prevent="toggleLikeCurrentSong"
+            >
+              <UIcon :name="playbackState.now_playing_is_liked ? 'i-bi-heart-fill' : 'i-bi-heart'" class="size-4" />
+            </UButton>
             <UBadge v-if="playbackState.now_playing_is_live" label="Live" color="error" variant="soft" class="shrink-0" />
           </p>
           <p class="truncate text-xs text-muted">
@@ -64,6 +76,18 @@
         <div class="min-w-0">
           <p class="flex items-center gap-1.5 truncate text-base font-semibold">
             <span class="min-w-0 truncate">{{ playbackState.now_playing_title || "No active track" }}</span>
+            <UButton
+              type="button"
+              :disabled="!playbackState.now_playing_id"
+              :color="playbackState.now_playing_is_liked ? 'error' : 'neutral'"
+              variant="ghost"
+              size="xs"
+              class="shrink-0 p-0.5"
+              :aria-label="playbackState.now_playing_is_liked ? 'Unlike current song' : 'Like current song'"
+              @click.stop.prevent="toggleLikeCurrentSong"
+            >
+              <UIcon :name="playbackState.now_playing_is_liked ? 'i-bi-heart-fill' : 'i-bi-heart'" class="size-4" />
+            </UButton>
             <UBadge v-if="playbackState.now_playing_is_live" label="Live" color="error" variant="soft" class="shrink-0" />
           </p>
           <p class="truncate text-xs text-muted">
@@ -222,7 +246,7 @@ const router = useRouter();
 const { playbackState } = usePlaybackState();
 const { isTabletLayout } = useBreakpoint();
 const { sidebarView, rightSidebarOpen } = useUiState();
-const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent } = useLibraryState();
+const { skipCurrent, previousTrack, togglePause, setRepeatMode, setShuffleEnabled, seekToPercent, toggleLikeCurrentSong } = useLibraryState();
 
 const {
   speakers

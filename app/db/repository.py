@@ -52,6 +52,50 @@ class Repository:
         self._ensure_play_history_thumbnail_column()
         self._ensure_provider_columns()
         self._ensure_playlist_entry_spotify_import_searched_column()
+        self._ensure_playlist_can_edit_column()
+        self._ensure_playlist_can_delete_column()
+        self._ensure_liked_songs_playlist_entry()
+
+
+    def _ensure_liked_songs_playlist_entry(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with Session(self.engine) as session:
+            existing = session.execute(select(Playlist.id).where(Playlist.title == "Liked Songs")).scalar_one_or_none()
+            if existing is not None:
+                return
+
+            playlist = Playlist(
+                title="Liked Songs",
+                channel="Liked Songs",
+                thumbnail_url="/static/images/liked_song.png",
+                can_edit=False,
+                can_delete=False,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                source_url="custom://liked_songs",
+            )
+            session.add(playlist)
+            session.commit()
+            return
+
+    def _ensure_playlist_can_edit_column(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with self.engine.begin() as conn:
+            column_rows = conn.execute(text("PRAGMA table_info(playlists)")).mappings().all()
+            column_names = {row["name"] for row in column_rows}
+            if "can_edit" not in column_names:
+                conn.execute(text("ALTER TABLE playlists ADD COLUMN can_edit INTEGER NOT NULL DEFAULT 1"))
+
+    def _ensure_playlist_can_delete_column(self) -> None:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return
+        with self.engine.begin() as conn:
+            column_rows = conn.execute(text("PRAGMA table_info(playlists)")).mappings().all()
+            column_names = {row["name"] for row in column_rows}
+            if "can_delete" not in column_names:
+                conn.execute(text("ALTER TABLE playlists ADD COLUMN can_delete INTEGER NOT NULL DEFAULT 1"))
 
     def _ensure_playlist_entry_spotify_import_searched_column(self) -> None:
         if self.engine.url.get_backend_name() != "sqlite":
@@ -709,3 +753,61 @@ class Repository:
             setting = session.get(Setting, key)
             if setting is not None:
                 session.delete(setting)
+
+    def get_playlist_by_source_url(self, source_url: str) -> Optional[Playlist]:
+        with self.session() as session:
+            return session.scalar(select(Playlist).where(Playlist.source_url == source_url))
+
+    def playlist_contains_track(
+        self,
+        playlist_id: uuid.UUID,
+        *,
+        normalized_url: str | None,
+        provider_item_id: str | None,
+    ) -> bool:
+        norm = (normalized_url or "").strip()
+        pid = (provider_item_id or "").strip() or None
+        if not norm and not pid:
+            return False
+        with self.session() as session:
+            stmt = select(func.count(PlaylistEntry.id)).where(PlaylistEntry.playlist_id == playlist_id)
+            if norm:
+                stmt = stmt.where(PlaylistEntry.normalized_url == norm)
+            elif pid:
+                stmt = stmt.where(PlaylistEntry.provider_item_id == pid)
+            count = session.scalar(stmt)
+            return bool(count and int(count) > 0)
+
+    def remove_playlist_track(
+        self,
+        playlist_id: uuid.UUID,
+        *,
+        normalized_url: str | None,
+        provider_item_id: str | None,
+    ) -> int:
+        norm = (normalized_url or "").strip()
+        pid = (provider_item_id or "").strip() or None
+        if not norm and not pid:
+            return 0
+        with self.session() as session:
+            playlist = session.get(Playlist, playlist_id)
+            if playlist is None:
+                return 0
+            stmt = delete(PlaylistEntry).where(PlaylistEntry.playlist_id == playlist_id)
+            if norm:
+                stmt = stmt.where(PlaylistEntry.normalized_url == norm)
+            elif pid:
+                stmt = stmt.where(PlaylistEntry.provider_item_id == pid)
+            result = session.execute(stmt)
+            removed = int(result.rowcount or 0)
+            if removed > 0:
+                playlist.entry_count = max(
+                    0,
+                    int(
+                        session.scalar(
+                            select(func.count(PlaylistEntry.id)).where(PlaylistEntry.playlist_id == playlist_id)
+                        )
+                        or 0
+                    ),
+                )
+            return removed
