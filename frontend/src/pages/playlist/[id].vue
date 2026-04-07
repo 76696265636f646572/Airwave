@@ -232,6 +232,7 @@ const firstTrackThumbnail = computed(() => {
     return `https://i.ytimg.com/vi/${first.provider_item_id}/hqdefault.jpg`;
   }
 });
+const songSearchTerm = ref("");
 
 const songCount = computed(() => entries.value.length || playlist.value?.entry_count || 0);
 const isRemotePlaylistView = computed(() => playlist.value?.kind === "remote_youtube");
