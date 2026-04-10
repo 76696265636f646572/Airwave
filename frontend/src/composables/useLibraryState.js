@@ -299,11 +299,17 @@ export function useLibraryState() {
     }
   }
 
-  async function updatePlaylist(playlistId, { title, description }) {
+  async function updatePlaylist(
+    playlistId,
+    { title, description, pinned, sync_enabled, sync_remove_missing },
+  ) {
     try {
       const body = {};
       if (title !== undefined) body.title = title.trim();
       if (description !== undefined) body.description = description.trim();
+      if (pinned !== undefined) body.pinned = !!pinned;
+      if (sync_enabled !== undefined) body.sync_enabled = !!sync_enabled;
+      if (sync_remove_missing !== undefined) body.sync_remove_missing = !!sync_remove_missing;
       if (Object.keys(body).length === 0) return;
       await fetchJson(`/api/playlists/${playlistId}`, {
         method: "PATCH",

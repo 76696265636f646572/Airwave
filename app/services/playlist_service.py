@@ -316,6 +316,18 @@ class PlaylistService:
             "pinned": playlist.pinned,
             "can_edit": bool(getattr(playlist, "can_edit", True)),
             "can_delete": bool(getattr(playlist, "can_delete", True)),
+            "sync_enabled": bool(getattr(playlist, "sync_enabled", False)),
+            "sync_remove_missing": bool(getattr(playlist, "sync_remove_missing", False)),
+            "last_sync_started_at": (
+                playlist.last_sync_started_at.isoformat() if getattr(playlist, "last_sync_started_at", None) else None
+            ),
+            "last_sync_succeeded_at": (
+                playlist.last_sync_succeeded_at.isoformat()
+                if getattr(playlist, "last_sync_succeeded_at", None)
+                else None
+            ),
+            "last_sync_status": getattr(playlist, "last_sync_status", None),
+            "last_sync_error": getattr(playlist, "last_sync_error", None),
             "kind": kind,
             "created_at": playlist.created_at.isoformat() if getattr(playlist, "created_at", None) else None,
             "updated_at": playlist.updated_at.isoformat() if getattr(playlist, "updated_at", None) else None,
@@ -433,9 +445,16 @@ class PlaylistService:
         title: str | None = None,
         description: str | None = None,
         pinned: bool | None = None,
+        sync_enabled: bool | None = None,
+        sync_remove_missing: bool | None = None,
     ) -> dict:
         playlist = self.repository.update_playlist(
-            playlist_id, title=title, description=description, pinned=pinned
+            playlist_id,
+            title=title,
+            description=description,
+            pinned=pinned,
+            sync_enabled=sync_enabled,
+            sync_remove_missing=sync_remove_missing,
         )
         if playlist is None:
             raise ValueError("Playlist not found")

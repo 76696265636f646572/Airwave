@@ -99,10 +99,43 @@
       <div v-if="isRemotePlaylistView" class="mt-6 text-sm text-muted">
         This playlist is from your YouTube account and is not in the local library yet.
       </div>
-      <div v-else-if="!entries.length" class="mt-6 text-sm text-muted">This playlist has no entries yet.</div>
+      <div
+        v-if="!isRemotePlaylistView"
+        class="mt-2 flex flex-col gap-2 rounded-lg border border-neutral-700/60 bg-neutral-900/20 p-3"
+      >
+        <div class="flex flex-wrap items-center gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="size-4 accent-neutral-200"
+              :checked="!!playlist.sync_enabled"
+              :disabled="playlist.can_edit === false"
+              @change="(e) => setSyncEnabled(e.target.checked)"
+            />
+            <span>Auto-sync playlist</span>
+          </label>
+
+          <label v-if="playlist.sync_enabled" class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              class="size-4 accent-neutral-200"
+              :checked="!!playlist.sync_remove_missing"
+              :disabled="playlist.can_edit === false"
+              @change="(e) => setSyncRemoveMissing(e.target.checked)"
+            />
+            <span>Remove tracks missing upstream</span>
+          </label>
+        </div>
+        <div class="text-xs text-muted">
+          {{ syncStatusText }}
+        </div>
+      </div>
+      <div v-if="!isRemotePlaylistView && !entries.length" class="mt-6 text-sm text-muted">
+        This playlist has no entries yet.
+      </div>
 
       <UScrollArea
-        v-else-if="!isRemotePlaylistView"
+        v-if="!isRemotePlaylistView && entries.length"
         :ui="{ viewport: 'mt-6 gap-2' }"
         class="min-h-0 flex-1"
       >
@@ -236,6 +269,22 @@ const songSearchTerm = ref("");
 
 const songCount = computed(() => entries.value.length || playlist.value?.entry_count || 0);
 const isRemotePlaylistView = computed(() => playlist.value?.kind === "remote_youtube");
+const syncStatusText = computed(() => {
+  const pl = playlist.value || {};
+  if (!pl?.sync_enabled) return "Sync disabled.";
+  const status = pl.last_sync_status || "";
+  const okAt = pl.last_sync_succeeded_at;
+  const startedAt = pl.last_sync_started_at;
+  const at = okAt || startedAt;
+  const atText = at ? new Date(at).toLocaleString() : null;
+  if (status === "running") return "Sync in progress…";
+  if (status === "error") {
+    const err = pl.last_sync_error ? ` Error: ${pl.last_sync_error}` : "";
+    return atText ? `Last sync failed at ${atText}.${err}` : `Last sync failed.${err}`;
+  }
+  if (okAt) return `Last synced at ${atText}.`;
+  return "Sync enabled. Waiting for next scheduled run.";
+});
 
 const totalDurationSeconds = computed(() =>
   entries.value.reduce((sum, e) => sum + (e.duration_seconds || 0), 0)
@@ -326,6 +375,20 @@ async function submitEdit() {
   editModalOpen.value = false;
   playlistToEdit.value = null;
   loadPlaylist();
+}
+
+async function setSyncEnabled(enabled) {
+  const pl = playlist.value;
+  if (!pl?.id) return;
+  await updatePlaylist(pl.id, { sync_enabled: !!enabled });
+  await loadPlaylist();
+}
+
+async function setSyncRemoveMissing(enabled) {
+  const pl = playlist.value;
+  if (!pl?.id) return;
+  await updatePlaylist(pl.id, { sync_remove_missing: !!enabled });
+  await loadPlaylist();
 }
 
 async function submitDelete() {
