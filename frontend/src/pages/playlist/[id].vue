@@ -380,15 +380,15 @@ async function submitEdit() {
 async function setSyncEnabled(enabled) {
   const pl = playlist.value;
   if (!pl?.id) return;
-  await updatePlaylist(pl.id, { sync_enabled: !!enabled });
-  await loadPlaylist();
+  const updated = await updatePlaylist(pl.id, { sync_enabled: !!enabled }, { notify: false });
+  if (updated) playlist.value = { ...pl, ...updated };
 }
 
 async function setSyncRemoveMissing(enabled) {
   const pl = playlist.value;
   if (!pl?.id) return;
-  await updatePlaylist(pl.id, { sync_remove_missing: !!enabled });
-  await loadPlaylist();
+  const updated = await updatePlaylist(pl.id, { sync_remove_missing: !!enabled }, { notify: false });
+  if (updated) playlist.value = { ...pl, ...updated };
 }
 
 async function submitDelete() {

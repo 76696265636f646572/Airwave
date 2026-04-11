@@ -89,6 +89,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     sync_service = SyncService(
         repository=repository,
         yt_dlp_service=yt_dlp_service,
+        spotify_import_service=spotify_import_service,
         interval_seconds=settings.playlist_sync_interval_seconds,
         max_concurrent=settings.playlist_sync_max_concurrent,
     )

@@ -41,6 +41,11 @@ def _hit_to_new_entry(hit: dict[str, Any]) -> NewPlaylistEntry:
     )
 
 
+def _spotify_upstream_item_id(track_id: str) -> str:
+    tid = (track_id or "").strip()
+    return f"spotify:track:{tid}" if tid else "spotify:track:unknown"
+
+
 @dataclass
 class _Session:
     playlist_id: uuid.UUID
@@ -81,12 +86,14 @@ class SpotifyImportService:
         pid = playlist.id
         pending_entries: list[NewPlaylistEntry] = []
         for i, t in enumerate(tracks, start=1):
+            tid = str(t["spotify_track_id"])
             pending_entries.append(
                 NewPlaylistEntry(
                     source_url=pending_source_url(pid, i),
                     normalized_url=pending_source_url(pid, i),
                     provider="pending",
-                    provider_item_id=t["spotify_track_id"],
+                    provider_item_id=tid,
+                    upstream_item_id=_spotify_upstream_item_id(tid),
                     title=t.get("title"),
                     channel=t.get("channel"),
                     duration_seconds=t.get("duration_seconds"),
@@ -140,12 +147,14 @@ class SpotifyImportService:
         )
         pending_entries: list[NewPlaylistEntry] = []
         for i, t in enumerate(tracks, start=1):
+            tid = str(t["spotify_track_id"])
             pending_entries.append(
                 NewPlaylistEntry(
                     source_url=pending_source_url(playlist_id, i),
                     normalized_url=pending_source_url(playlist_id, i),
                     provider="pending",
-                    provider_item_id=t["spotify_track_id"],
+                    provider_item_id=tid,
+                    upstream_item_id=_spotify_upstream_item_id(tid),
                     title=t.get("title"),
                     channel=t.get("channel"),
                     duration_seconds=t.get("duration_seconds"),
@@ -166,6 +175,49 @@ class SpotifyImportService:
             len(tracks),
         )
         return {"ok": True, "track_count": len(tracks)}
+
+    def auto_match_first_hits(self, playlist_id: uuid.UUID, entry_ids: list[int]) -> dict[str, Any]:
+        """For each pending Spotify entry, search providers and apply the first hit."""
+        if not entry_ids:
+            return {"ok": True, "matched": 0, "attempted": 0}
+        matched = 0
+        attempted = 0
+        for entry_id in entry_ids:
+            entry = self.repository.get_playlist_entry(int(entry_id))
+            if entry is None or entry.playlist_id != playlist_id:
+                continue
+            if not is_pending_spotify_import_url(entry.source_url):
+                continue
+            attempted += 1
+            title = (entry.title or "").strip()
+            artist = (entry.channel or "").strip()
+            query = f"{title} {artist}".strip() or title or artist or "unknown"
+            by_provider = self._search_parallel_for_query(
+                playlist_id,
+                int(getattr(entry, "position", 0) or 0),
+                query,
+                list(DEFAULT_PROVIDERS),
+            )
+            chosen: dict[str, Any] | None = None
+            chosen_provider: str | None = None
+            for prov in DEFAULT_PROVIDERS:
+                hits = by_provider.get(prov) or []
+                if hits:
+                    chosen = hits[0]
+                    chosen_provider = prov
+                    break
+            if not chosen:
+                continue
+            self.repository.update_playlist_entry(entry.id, _hit_to_new_entry(chosen))
+            self.repository.set_playlist_entry_spotify_import_searched(entry.id, True)
+            matched += 1
+            logger.info(
+                "Spotify import auto-matched first hit library_playlist_id=%s entry_id=%s provider=%s",
+                playlist_id,
+                entry.id,
+                chosen_provider,
+            )
+        return {"ok": True, "matched": matched, "attempted": attempted}
 
     def _get_or_create_session_unlocked(self, playlist_id: uuid.UUID) -> _Session:
         s = self._sessions.get(playlist_id)

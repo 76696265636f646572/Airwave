@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from app.db.repository import NewPlaylistEntry, Repository
 from app.services.spotify_free_service import is_spotify_playlist_url, spotify_playlist_id_from_url
 from app.services.spotify_free_service import fetch_spotify_playlist_tracks
+from app.services.spotify_import_service import SpotifyImportService, pending_source_url
 from app.services.yt_dlp_service import YtDlpService
 
 logger = logging.getLogger(__name__)
@@ -51,11 +52,13 @@ class SyncService:
         *,
         repository: Repository,
         yt_dlp_service: YtDlpService,
+        spotify_import_service: SpotifyImportService | None = None,
         interval_seconds: int = 600,
         max_concurrent: int = 2,
     ) -> None:
         self.repository = repository
         self.yt_dlp_service = yt_dlp_service
+        self.spotify_import_service = spotify_import_service
         self.interval_seconds = max(30, int(interval_seconds))
         self.max_concurrent = max(1, int(max_concurrent))
         self._stop = asyncio.Event()
@@ -200,6 +203,7 @@ class SyncService:
         pid = getattr(playlist, "id", None)
         source_url = str(getattr(playlist, "source_url", "") or "")
         existing_entries = self.repository.list_playlist_entries(pid)
+        next_pos = (max((int(getattr(e, "position", 0) or 0) for e in existing_entries), default=0) + 1) if existing_entries else 1
         existing_ids: set[str] = set()
         for e in existing_entries:
             if getattr(e, "upstream_item_id", None):
@@ -223,14 +227,15 @@ class SyncService:
                         "upstream_item_id": upstream_item_id,
                         "provider": "pending",
                         "provider_item_id": tid,
-                        "source_url": f"airwave-pending://spotify-import/{pid}/track/{tid}",
-                        "normalized_url": f"airwave-pending://spotify-import/{pid}/track/{tid}",
+                        "source_url": pending_source_url(pid, next_pos),
+                        "normalized_url": pending_source_url(pid, next_pos),
                         "title": t.get("title"),
                         "channel": t.get("channel"),
                         "duration_seconds": t.get("duration_seconds"),
                         "thumbnail_url": t.get("thumbnail_url"),
                     }
                 )
+                next_pos += 1
         else:
             preview = self.yt_dlp_service.preview_playlist(source_url, force_refresh=True)
             for item in preview.entries:
@@ -281,6 +286,16 @@ class SyncService:
         if to_add:
             created = self.repository.add_playlist_entries(pid, to_add)
             result.new_items_added = len(created)
+            if is_spotify_playlist_url(source_url) and self.spotify_import_service is not None and created:
+                try:
+                    self.spotify_import_service.auto_match_first_hits(pid, [int(e.id) for e in created])
+                except Exception:
+                    logger.warning(
+                        "Spotify auto-match failed sync playlist_id=%s created=%s",
+                        pid,
+                        len(created),
+                        exc_info=True,
+                    )
 
         if remove_missing:
             removed = self.repository.prune_playlist_entries_missing_upstream_ids(
