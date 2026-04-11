@@ -131,6 +131,8 @@ class FakePlaylistService:
         title: str | None = None,
         description: str | None = None,
         pinned: bool | None = None,
+        sync_enabled: bool | None = None,
+        sync_remove_missing: bool | None = None,
     ) -> dict[str, Any]:
         if playlist_id != TEST_PLAYLIST_UUID:
             raise ValueError("Playlist not found")
@@ -658,6 +660,18 @@ def test_playlist_library_endpoints(tmp_path):
 
         forbidden_update = client.patch(f"/api/playlists/{TEST_PLAYLIST_UUID}", json={"title": "Nope"})
         assert forbidden_update.status_code == 403
+
+        allowed_pin = client.patch(f"/api/playlists/{TEST_PLAYLIST_UUID}", json={"pinned": True})
+        assert allowed_pin.status_code == 200
+
+        forbidden_sync = client.patch(f"/api/playlists/{TEST_PLAYLIST_UUID}", json={"sync_enabled": True})
+        assert forbidden_sync.status_code == 403
+
+        forbidden_sync_with_pin = client.patch(
+            f"/api/playlists/{TEST_PLAYLIST_UUID}",
+            json={"pinned": False, "sync_enabled": True},
+        )
+        assert forbidden_sync_with_pin.status_code == 403
 
         deleted = client.delete(f"/api/playlists/{TEST_PLAYLIST_UUID}")
         assert deleted.status_code == 403

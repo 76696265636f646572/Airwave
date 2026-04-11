@@ -156,8 +156,17 @@ def update_playlist(playlist_id: UUID, payload: UpdatePlaylistRequest, request: 
     playlist = _services(request)["repo"].get_playlist(playlist_id)
     if playlist is None:
         raise HTTPException(status_code=404, detail="Playlist not found")
-    # Allow pinning/unpinning of playlists 
-    if not getattr(playlist, "can_edit", True) and payload.pinned is None:
+    # Allow pinning/unpinning of playlists only.
+    restricted_fields_requested = any(
+        value is not None
+        for value in (
+            payload.title,
+            payload.description,
+            payload.sync_enabled,
+            payload.sync_remove_missing,
+        )
+    )
+    if not getattr(playlist, "can_edit", True) and restricted_fields_requested:
         raise HTTPException(status_code=403, detail="Playlist cannot be edited")
     old_sync_enabled = bool(getattr(playlist, "sync_enabled", False))
     old_sync_remove_missing = bool(getattr(playlist, "sync_remove_missing", False))
@@ -179,10 +188,11 @@ def update_playlist(playlist_id: UUID, payload: UpdatePlaylistRequest, request: 
             "description": payload.description,
             "pinned": payload.pinned,
         }
-        if payload.sync_enabled is not None:
-            kwargs["sync_enabled"] = payload.sync_enabled
-        if payload.sync_remove_missing is not None:
-            kwargs["sync_remove_missing"] = payload.sync_remove_missing
+        if getattr(playlist, "can_edit", True):
+            if payload.sync_enabled is not None:
+                kwargs["sync_enabled"] = payload.sync_enabled
+            if payload.sync_remove_missing is not None:
+                kwargs["sync_remove_missing"] = payload.sync_remove_missing
         result = _services(request)["playlist"].update_playlist(playlist_id, **kwargs)
         _publish_ui_snapshot(request)
         return result
