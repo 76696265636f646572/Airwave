@@ -56,7 +56,7 @@
           aria-label="Play playlist"
           @click="playPlaylistNow(playlist.id)"
         />
-        <div class="flex items-center">
+        <div v-if="isPlaylistSyncable(playlist)" class="flex items-center">
           <UButton
             type="button"
             :color="playlist.sync_enabled ? 'primary' : 'neutral'"
@@ -274,6 +274,21 @@ const firstTrackThumbnail = computed(() => {
   }
 });
 const songSearchTerm = ref("");
+
+function playlistUpstreamSource(pl) {
+  if (!pl) return "";
+  return String(pl.source_url ?? pl.source ?? "").trim();
+}
+
+/** True when the playlist has an http(s) upstream (yt-dlp or Spotify web); excludes custom and app-internal URLs. */
+function isPlaylistSyncable(pl) {
+  const src = playlistUpstreamSource(pl);
+  if (!src) return false;
+  const lower = src.toLowerCase();
+  if (lower.startsWith("custom://")) return false;
+  if (lower.startsWith("airwave-pending://")) return false;
+  return lower.startsWith("http://") || lower.startsWith("https://");
+}
 
 const songCount = computed(() => entries.value.length || playlist.value?.entry_count || 0);
 const isRemotePlaylistView = computed(() => playlist.value?.kind === "remote_youtube");
