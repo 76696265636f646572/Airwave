@@ -31,7 +31,7 @@
       </div>
 
       <!-- Action row -->
-      <div class="mt-4 mb-4 flex items-center gap-2">
+      <div class="mt-4 mb-2 flex items-center gap-2">
         <template v-if="isRemotePlaylistView">
           <UButton
             type="button"
@@ -56,6 +56,37 @@
           aria-label="Play playlist"
           @click="playPlaylistNow(playlist.id)"
         />
+        <div class="flex items-center">
+          <UButton
+            type="button"
+            :color="playlist.sync_enabled ? 'primary' : 'neutral'"
+            :variant="playlist.sync_enabled ? 'solid' : 'ghost'"
+            size="lg"
+            icon="i-bi-arrow-repeat"
+            :class="playlist.sync_enabled ? 'cursor-pointer mr-0 rounded-r-none' : 'cursor-pointer'"
+            :ui="{ rounded: 'rounded-full' }"
+            :model-value="!!playlist.sync_enabled"
+            aria-label="Toggle auto-sync playlist"
+            @click="setSyncEnabled(!playlist.sync_enabled)"
+          >
+          </UButton>
+           
+          <UTooltip text="Remove tracks missing in upstream">
+            <UButton
+              type="button"
+              :color="playlist.sync_remove_missing ? 'error' : 'neutral'"
+              :variant="playlist.sync_remove_missing ? 'soft' : 'ghost'"
+              size="lg"
+              icon="i-bi-trash-fill"
+              :class="playlist.sync_enabled ? 'cursor-pointer ml-0 rounded-l-none ' : 'invisible'"
+              :ui="{ rounded: 'rounded-full' }"
+              :model-value="!!playlist.sync_remove_missing"
+              aria-label="Toggle remove tracks missing in upstream"
+              @click="setSyncRemoveMissing(!playlist.sync_remove_missing)"
+            >
+            </UButton>
+          </UTooltip>
+        </div>
         <UDropdownMenu :items="dropdownItems" :ui="{ separator: 'hidden' }" @update:open="(open) => !open && resetSearch()">
           <template #playlist-filter>
             <PlaylistSelectorFilter
@@ -101,31 +132,8 @@
       </div>
       <div
         v-if="!isRemotePlaylistView"
-        class="mt-2 flex flex-col gap-2 rounded-lg border border-neutral-700/60 bg-neutral-900/20 p-3"
+        class="mt-2 mb-4 flex flex-col gap-2  rounded-lg border border-neutral-700/60 bg-neutral-900/20 p-3"
       >
-        <div class="flex flex-wrap items-center gap-4">
-          <label class="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              class="size-4 accent-neutral-200"
-              :checked="!!playlist.sync_enabled"
-              :disabled="playlist.can_edit === false"
-              @change="(e) => setSyncEnabled(e.target.checked)"
-            />
-            <span>Auto-sync playlist</span>
-          </label>
-
-          <label v-if="playlist.sync_enabled" class="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              class="size-4 accent-neutral-200"
-              :checked="!!playlist.sync_remove_missing"
-              :disabled="playlist.can_edit === false"
-              @change="(e) => setSyncRemoveMissing(e.target.checked)"
-            />
-            <span>Remove tracks missing upstream</span>
-          </label>
-        </div>
         <div class="text-xs text-muted">
           {{ syncStatusText }}
         </div>
