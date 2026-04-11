@@ -56,7 +56,7 @@
           aria-label="Play playlist"
           @click="playPlaylistNow(playlist.id)"
         />
-        <div v-if="isPlaylistSyncable(playlist)" class="flex items-center">
+        <div v-if="isPlaylistSyncable(playlist) && playlist.can_edit" class="flex items-center">
           <UButton
             type="button"
             :color="playlist.sync_enabled ? 'primary' : 'neutral'"
@@ -402,14 +402,14 @@ async function submitEdit() {
 
 async function setSyncEnabled(enabled) {
   const pl = playlist.value;
-  if (!pl?.id) return;
+  if (!pl?.id || !pl.can_edit) return;
   const updated = await updatePlaylist(pl.id, { sync_enabled: !!enabled }, { notify: false });
   if (updated) playlist.value = { ...pl, ...updated };
 }
 
 async function setSyncRemoveMissing(enabled) {
   const pl = playlist.value;
-  if (!pl?.id) return;
+  if (!pl?.id || !pl.can_edit) return;
   const updated = await updatePlaylist(pl.id, { sync_remove_missing: !!enabled }, { notify: false });
   if (updated) playlist.value = { ...pl, ...updated };
 }
