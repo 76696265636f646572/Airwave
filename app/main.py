@@ -23,6 +23,7 @@ from app.services.sonos_service import SonosService
 from app.services.stream_engine import StreamEngine
 from app.services.sync_service import SyncService
 from app.services.ui_events import UiEventBroker
+from app.services.musicatlas_client import MusicAtlasClient
 from app.services.yt_dlp_service import YtDlpService
 
 APP_DIR = Path(__file__).resolve().parent
@@ -100,6 +101,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         ffprobe_path=settings.ffprobe_path,
         deno_path=settings.deno_path,
     )
+    musicatlas_client = MusicAtlasClient.from_settings(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -124,6 +126,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
         app.state.sync_service = sync_service
         app.state.sonos_service = sonos_service
         app.state.binaries_service = binaries_service
+        app.state.musicatlas_client = musicatlas_client
         app.state.ui_events = ui_events
         sync_task = asyncio.create_task(sync_service.run_forever(), name="playlist-sync")
         app.state.sync_task = sync_task
@@ -145,6 +148,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
                 pass
             if start_engine:
                 stream_engine.stop()
+            musicatlas_client.close()
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.include_router(root_router)

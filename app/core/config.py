@@ -95,6 +95,20 @@ class Settings(BaseSettings):
         default="",
         description="Comma-separated paths, or a JSON array string, for AIRWAVE_LOCAL_MEDIA_ROOTS",
     )
+    musicatlas_api_key: str = Field(
+        default="",
+        description="MusicAtlas API key(s): one key, or comma-separated keys for rotation (AIRWAVE_MUSICATLAS_API_KEY). Empty disables MusicAtlas.",
+    )
+    musicatlas_base_url: str = Field(
+        default="https://api.musicatlas.ai",
+        description="Base URL for the MusicAtlas public API (AIRWAVE_MUSICATLAS_BASE_URL).",
+    )
+    musicatlas_timeout_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=120.0,
+        description="HTTP timeout for MusicAtlas requests (AIRWAVE_MUSICATLAS_TIMEOUT_SECONDS).",
+    )
 
     @staticmethod
     def _parse_local_media_roots_input(raw: str) -> list[str]:
