@@ -81,6 +81,18 @@ def _preview_body(text: str) -> str:
         return text
     return f"{text[:_BODY_PREVIEW_LIMIT]}…"
 
+def extract_artist_song_title(channel: str, track: str) -> tuple[str, str]:
+    if not channel or not track:
+        return (channel or "").strip(), (track or "").strip()
+    artist = track.split(" - ", 1)
+    if artist and len(artist) > 1:
+        artist = artist[0].strip()
+    else:
+        artist = channel
+    artist = extract_artist(artist)
+    track = extract_song_title(artist, track)
+    return artist, track
+
 def extract_artist(artist: str) -> str:
     if not artist:
         return artist
@@ -92,10 +104,11 @@ def extract_song_title(artist: str, track: str) -> str:
     """Extract the song title from the track string."""
     if not track:
         return track
-    print(f"extract_song_title: artist={artist}, track={track}")
-    track = track.split(" - ", 1)[1].strip()
-    if not track:
-        return track
+    track = track.split(" - ", 1)
+    if track and len(track) > 1:
+        track = track[1].strip()
+    else:
+        track = track[0].strip()
     #subparts array
     after_song_title = ["|", "(", ")", "[", "]"]
     for part in after_song_title:

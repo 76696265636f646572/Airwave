@@ -15,7 +15,7 @@ from app.services.musicatlas_client import (
     MusicAtlasTimeoutError,
     MusicAtlasTransportError,
 )
-from app.services.musicatlas_client import extract_artist, extract_song_title
+from app.services.musicatlas_client import extract_artist_song_title
 
 router = APIRouter()
 
@@ -107,8 +107,9 @@ def _resolve_suggestion_seed(
         )
     ch = (getattr(engine.state, "now_playing_channel", None) or "").strip()
     title = (getattr(engine.state, "now_playing_title", None) or "").strip()
-    ch = extract_artist(ch)
-    title = extract_song_title(ch, title)
+    artist, title = extract_artist_song_title(ch, title)
+    if artist:
+        ch = artist
     if ch and title:
         return ch, title
     raise HTTPException(
@@ -247,7 +248,8 @@ def musicatlas_suggestions(
         a = (artist or "").strip()
         t = (track or "").strip()
         if a and t:
-            seed_out = {"artist": a, "track": _extract_song_title(a, t)}
+            sa, st = extract_artist_song_title(a, t)
+            seed_out = {"artist": sa, "track": st}
         return {
             "enabled": True,
             "items": [],
