@@ -16,8 +16,10 @@ from app.services.musicatlas_client import (
     MusicAtlasTransportError,
 )
 from app.services.musicatlas_client import extract_artist_song_title
-
+import logging
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 _DISABLED_MESSAGE = "MusicAtlas is not configured (set AIRWAVE_MUSICATLAS_API_KEY)."
 
@@ -227,6 +229,7 @@ def musicatlas_suggestions(
 
     services = _services(request)
     registry = services.get("musicatlas_catalog_jobs")
+    artist, track = extract_artist_song_title(artist, track)
     job_param = (catalog_job_id or "").strip()
     if job_param:
         if registry is None:
@@ -247,9 +250,7 @@ def musicatlas_suggestions(
         seed_out: dict[str, str] | None = None
         a = (artist or "").strip()
         t = (track or "").strip()
-        if a and t:
-            sa, st = extract_artist_song_title(a, t)
-            seed_out = {"artist": sa, "track": st}
+        seed_out = {"artist": a, "track": t}
         return {
             "enabled": True,
             "items": [],
