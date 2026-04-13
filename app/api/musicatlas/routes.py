@@ -227,6 +227,15 @@ def musicatlas_suggestions(
     if client is None:
         return _disabled_payload()
 
+    if artist == "_airwave_probe" and track == "_airwave_probe":
+        return {
+            "enabled": True,
+            "items": [],
+            "seed": {"artist": artist, "track": track},
+            "notice": None,
+            "catalog_ingestion": None,
+        }
+
     services = _services(request)
     registry = services.get("musicatlas_catalog_jobs")
     artist, track = extract_artist_song_title(artist, track)
