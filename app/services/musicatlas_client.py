@@ -201,42 +201,47 @@ class MusicAtlasClient:
         """
         self._require_enabled()
         rel = path if path.startswith("/") else f"/{path}"
-        n = len(self._keys)
         upper = method.upper()
+        request_json = dict(json_body) if json_body is not None else None
+        request_params = dict(params) if params is not None else None
 
         with self._lock:
+            keys = tuple(self._keys)
+            n = len(keys)
             start_idx = self._active_index % n
-            for offset in range(n):
-                idx = (start_idx + offset) % n
-                key = self._keys[idx]
-                headers = {"Authorization": f"Bearer {key}"}
-                try:
-                    response = self._http.request(
-                        upper,
-                        rel,
-                        json=dict(json_body) if json_body is not None else None,
-                        params=dict(params) if params is not None else None,
-                        headers=headers,
-                    )
-                except httpx.TimeoutException as exc:
-                    raise MusicAtlasTimeoutError(
-                        f"MusicAtlas request timed out after {self._timeout_seconds}s",
-                        path=rel,
-                        timeout_seconds=self._timeout_seconds,
-                    ) from exc
-                except httpx.RequestError as exc:
-                    raise MusicAtlasTransportError(
-                        f"MusicAtlas request failed: {exc}",
-                        path=rel,
-                    ) from exc
 
-                if response.status_code in _ROTATE_HTTP_STATUSES:
-                    logger.warning(
-                        "MusicAtlas HTTP %s for %s (key_index=%s); rotating to next key if available",
-                        response.status_code,
-                        rel,
-                        idx,
-                    )
+        for offset in range(n):
+            idx = (start_idx + offset) % n
+            key = keys[idx]
+            headers = {"Authorization": f"Bearer {key}"}
+            try:
+                response = self._http.request(
+                    upper,
+                    rel,
+                    json=request_json,
+                    params=request_params,
+                    headers=headers,
+                )
+            except httpx.TimeoutException as exc:
+                raise MusicAtlasTimeoutError(
+                    f"MusicAtlas request timed out after {self._timeout_seconds}s",
+                    path=rel,
+                    timeout_seconds=self._timeout_seconds,
+                ) from exc
+            except httpx.RequestError as exc:
+                raise MusicAtlasTransportError(
+                    f"MusicAtlas request failed: {exc}",
+                    path=rel,
+                ) from exc
+
+            if response.status_code in _ROTATE_HTTP_STATUSES:
+                logger.warning(
+                    "MusicAtlas HTTP %s for %s (key_index=%s); rotating to next key if available",
+                    response.status_code,
+                    rel,
+                    idx,
+                )
+                with self._lock:
                     if offset == n - 1:
                         raise MusicAtlasKeysExhaustedError(
                             "All MusicAtlas API keys were rejected or rate-limited for this request.",
@@ -245,39 +250,40 @@ class MusicAtlasClient:
                             keys_tried=n,
                         )
                     self._active_index = (idx + 1) % n
-                    continue
+                continue
 
-                if response.status_code not in ok_status_codes:
-                    preview: str | None = None
-                    try:
-                        preview = _preview_body(response.text)
-                    except Exception:
-                        preview = None
-                    raise MusicAtlasHttpError(
-                        f"MusicAtlas request failed with HTTP {response.status_code}",
-                        status_code=response.status_code,
-                        path=rel,
-                        response_body_preview=preview,
-                    )
-
-                self._active_index = idx
+            if response.status_code not in ok_status_codes:
+                preview: str | None = None
                 try:
-                    body = response.json()
-                except json.JSONDecodeError as exc:
-                    raise MusicAtlasHttpError(
-                        "MusicAtlas returned a non-JSON response body",
-                        status_code=response.status_code,
-                        path=rel,
-                        response_body_preview=_preview_body(response.text),
-                    ) from exc
-                if not isinstance(body, dict):
-                    raise MusicAtlasHttpError(
-                        "MusicAtlas returned a JSON value that is not an object",
-                        status_code=response.status_code,
-                        path=rel,
-                        response_body_preview=_preview_body(response.text),
-                    )
-                return response.status_code, body
+                    preview = _preview_body(response.text)
+                except Exception:
+                    preview = None
+                raise MusicAtlasHttpError(
+                    f"MusicAtlas request failed with HTTP {response.status_code}",
+                    status_code=response.status_code,
+                    path=rel,
+                    response_body_preview=preview,
+                )
+
+            with self._lock:
+                self._active_index = idx
+            try:
+                body = response.json()
+            except json.JSONDecodeError as exc:
+                raise MusicAtlasHttpError(
+                    "MusicAtlas returned a non-JSON response body",
+                    status_code=response.status_code,
+                    path=rel,
+                    response_body_preview=_preview_body(response.text),
+                ) from exc
+            if not isinstance(body, dict):
+                raise MusicAtlasHttpError(
+                    "MusicAtlas returned a JSON value that is not an object",
+                    status_code=response.status_code,
+                    path=rel,
+                    response_body_preview=_preview_body(response.text),
+                )
+            return response.status_code, body
 
     def _post_json(self, path: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         _status, data = self._request_json("POST", path, json_body=payload, ok_status_codes=frozenset({200}))
