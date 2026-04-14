@@ -392,56 +392,64 @@ class DailyMusicAtlasPlaylistService:
         for candidate in self._history_catalog_candidates():
             artist = candidate.artist
             title = candidate.title
-            logger.info(
-                "Daily MusicAtlas catalog preflight checking artist=%s title=%s",
-                artist,
-                title,
-            )
-            response = self.musicatlas_client.similar_tracks(artist=artist, track=title)
-            matches = response.get("matches")
-            if isinstance(matches, list) and len(matches) > 0:
+            try:
                 logger.info(
-                    "Daily MusicAtlas catalog preflight already indexed artist=%s title=%s",
+                    "Daily MusicAtlas catalog preflight checking artist=%s title=%s",
                     artist,
                     title,
                 )
-                continue
+                response = self.musicatlas_client.similar_tracks(artist=artist, track=title)
+                matches = response.get("matches")
+                if isinstance(matches, list) and len(matches) > 0:
+                    logger.info(
+                        "Daily MusicAtlas catalog preflight already indexed artist=%s title=%s",
+                        artist,
+                        title,
+                    )
+                    continue
 
-            logger.info(
-                "Daily MusicAtlas catalog preflight missing track artist=%s title=%s; submitting add_track",
-                artist,
-                title,
-            )
-            status_code, body = self.musicatlas_client.add_track(artist=artist, title=title)
-            if status_code == 409:
                 logger.info(
-                    "Daily MusicAtlas catalog preflight add_track conflict artist=%s title=%s message=%s",
+                    "Daily MusicAtlas catalog preflight missing track artist=%s title=%s; submitting add_track",
                     artist,
                     title,
-                    body.get("message"),
                 )
-                self.repository.mark_history_rows_musicatlas_submitted(list(candidate.history_ids))
-                continue
+                status_code, body = self.musicatlas_client.add_track(artist=artist, title=title)
+                if status_code == 409:
+                    logger.info(
+                        "Daily MusicAtlas catalog preflight add_track conflict artist=%s title=%s message=%s",
+                        artist,
+                        title,
+                        body.get("message"),
+                    )
+                    self.repository.mark_history_rows_musicatlas_submitted(list(candidate.history_ids))
+                    continue
 
-            job_id = _extract_musicatlas_job_id(body)
-            if not job_id:
-                logger.warning(
-                    "Daily MusicAtlas catalog preflight add_track missing job_id artist=%s title=%s status_code=%s message=%s; continuing",
+                job_id = _extract_musicatlas_job_id(body)
+                if not job_id:
+                    logger.warning(
+                        "Daily MusicAtlas catalog preflight add_track missing job_id artist=%s title=%s status_code=%s message=%s; continuing",
+                        artist,
+                        title,
+                        status_code,
+                        body.get("message"),
+                    )
+                    self.repository.mark_history_rows_musicatlas_submitted(list(candidate.history_ids))
+                    continue
+                logger.info(
+                    "Daily MusicAtlas catalog preflight waiting for ingestion artist=%s title=%s job_id=%s",
                     artist,
                     title,
-                    status_code,
-                    body.get("message"),
+                    job_id,
                 )
+                self._wait_for_catalog_ingestion(artist=artist, title=title, job_id=job_id)
                 self.repository.mark_history_rows_musicatlas_submitted(list(candidate.history_ids))
+            except Exception:
+                logger.exception(
+                    "Daily MusicAtlas catalog preflight failed artist=%s title=%s; continuing",
+                    artist,
+                    title,
+                )
                 continue
-            logger.info(
-                "Daily MusicAtlas catalog preflight waiting for ingestion artist=%s title=%s job_id=%s",
-                artist,
-                title,
-                job_id,
-            )
-            self._wait_for_catalog_ingestion(artist=artist, title=title, job_id=job_id)
-            self.repository.mark_history_rows_musicatlas_submitted(list(candidate.history_ids))
 
     def _request_playlist_entries(
         self,
