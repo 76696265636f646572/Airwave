@@ -380,7 +380,10 @@ const {
   playlists,
   importPlaylistUrl,
   reorderPlaylistEntry,
+  addUrl,
+  playUrl,
   playPlaylistNow,
+  clearQueue,
   queuePlaylist,
   addEntriesToPlaylist,
   createPlaylist,
@@ -809,24 +812,24 @@ async function playRadioAll() {
     notifyError("Nothing to play", new Error("No playable URLs in this radio list."));
     return;
   }
-  try {
-    await fetchJson("/api/queue", { method: "DELETE" });
-    await fetchJson("/api/queue/play-now", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: list[0].source_url }),
-    });
-    for (let i = 1; i < list.length; i += 1) {
-      await fetchJson("/api/queue/add", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: list[i].source_url }),
-      });
-    }
-    notifySuccess("Playing now", "Radio list is now playing.");
-  } catch (error) {
-    notifyError("Could not start playback", error);
+  const queueCleared = await clearQueue({ notify: false });
+  if (!queueCleared) {
+    notifyError("Could not start playback", new Error("Could not clear the queue."));
+    return;
   }
+  const started = await playUrl(list[0].source_url, { notify: false });
+  if (!started) {
+    notifyError("Could not start playback", new Error("Could not start playback."));
+    return;
+  }
+  for (let i = 1; i < list.length; i += 1) {
+    const queued = await addUrl(list[i].source_url, { notify: false });
+    if (!queued) {
+      notifyError("Could not start playback", new Error("Could not queue the rest of the radio list."));
+      return;
+    }
+  }
+  notifySuccess("Playing now", "Radio list is now playing.");
 }
 
 async function queueRadioAll() {
@@ -835,18 +838,14 @@ async function queueRadioAll() {
     notifyError("Nothing to queue", new Error("No playable URLs in this radio list."));
     return;
   }
-  try {
-    for (const row of list) {
-      await fetchJson("/api/queue/add", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: row.source_url }),
-      });
+  for (const row of list) {
+    const queued = await addUrl(row.source_url, { notify: false });
+    if (!queued) {
+      notifyError("Could not add to queue", new Error("Could not queue the full radio list."));
+      return;
     }
-    notifySuccess("Added to queue", `${list.length} tracks queued.`);
-  } catch (error) {
-    notifyError("Could not add to queue", error);
   }
+  notifySuccess("Added to queue", `${list.length} tracks queued.`);
 }
 
 async function saveRadioToLibrary() {
