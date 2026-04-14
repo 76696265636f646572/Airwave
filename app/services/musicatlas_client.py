@@ -82,7 +82,6 @@ def _preview_body(text: str) -> str:
     return f"{text[:_BODY_PREVIEW_LIMIT]}…"
 
 def extract_artist_song_title(channel: str, track: str) -> tuple[str, str]:
-    print(f"extract_artist_song_title: channel={channel}, track={track}")
     if not channel or not track:
         return (channel or "").strip(), (track or "").strip()
     artist = track.split(" - ", 1)
@@ -92,7 +91,6 @@ def extract_artist_song_title(channel: str, track: str) -> tuple[str, str]:
         artist = channel
     artist = extract_artist(artist)
     track = extract_song_title(artist, track)
-    print(f"extract_artist_song_title: artist={artist}, track={track}")
     return artist, track
 
 def extract_artist(artist: str) -> str:

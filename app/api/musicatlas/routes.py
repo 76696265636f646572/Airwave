@@ -7,7 +7,6 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request
 from app.api.common.dependencies import _services
 from app.api.common.models import MusicAtlasGeneratePlaylistRequest
 from app.api.common.serializers import serialize_musicatlas_matches_for_queue_ui
-from app.db.models import PlayHistory
 from app.services.musicatlas_client import (
     MusicAtlasDisabledError,
     MusicAtlasHttpError,
@@ -16,10 +15,9 @@ from app.services.musicatlas_client import (
     MusicAtlasTransportError,
 )
 from app.services.musicatlas_client import extract_artist_song_title
-import logging
-router = APIRouter()
+from app.services.musicatlas_playlist_service import MusicAtlasSeedOptions, build_musicatlas_liked_tracks
 
-logger = logging.getLogger(__name__)
+router = APIRouter()
 
 _DISABLED_MESSAGE = "MusicAtlas is not configured (set AIRWAVE_MUSICATLAS_API_KEY)."
 
@@ -120,43 +118,6 @@ def _resolve_suggestion_seed(
     )
 
 
-def _history_row_seed(repo: Any, row: PlayHistory) -> dict[str, str] | None:
-    title = (row.title or "").strip()
-    if not title:
-        return None
-    artist: str | None = None
-    qid = row.queue_item_id
-    if qid is not None:
-        item = repo.get_item(int(qid))
-        if item is not None:
-            ch = (item.channel or "").strip()
-            if ch:
-                artist = ch
-    if not artist:
-        parts = title.split(" - ", 1)
-        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-            artist, title = parts[0].strip(), parts[1].strip()
-        else:
-            artist = "Unknown Artist"
-    return {"artist": artist, "title": title}
-
-
-def _dedupe_liked_tracks(items: list[dict[str, str]]) -> list[dict[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    out: list[dict[str, str]] = []
-    for it in items:
-        artist = (it.get("artist") or "").strip()
-        title = (it.get("title") or "").strip()
-        if not artist or not title:
-            continue
-        key = (artist.lower(), title.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"artist": artist, "title": title})
-    return out
-
-
 def _catalog_ingestion_from_progress(*, job_id: str, progress: dict[str, Any]) -> dict[str, Any]:
     status = str(progress.get("status") or "").strip() or "unknown"
     terminal = status in ("done", "error")
@@ -195,24 +156,15 @@ def _fetch_catalog_progress(
 
 def _build_multi_seeds(request: Request, payload: MusicAtlasGeneratePlaylistRequest) -> list[dict[str, str]]:
     services = _services(request)
-    repo = services["repo"]
-    engine = services["engine"]
-    candidates: list[dict[str, str]] = []
-
-    if payload.include_now_playing:
-        ch = (getattr(engine.state, "now_playing_channel", None) or "").strip()
-        title = (getattr(engine.state, "now_playing_title", None) or "").strip()
-        if ch and title:
-            candidates.append({"artist": ch, "title": title})
-
-    history = repo.list_history(limit=payload.history_limit)
-    for row in history:
-        seed = _history_row_seed(repo, row)
-        if seed is not None:
-            candidates.append(seed)
-
-    deduped = _dedupe_liked_tracks(candidates)
-    return deduped[: payload.max_seeds]
+    return build_musicatlas_liked_tracks(
+        repository=services["repo"],
+        stream_engine=services["engine"],
+        seed_options=MusicAtlasSeedOptions(
+            history_limit=payload.history_limit,
+            max_seeds=payload.max_seeds,
+            include_now_playing=payload.include_now_playing,
+        ),
+    )
 
 
 @router.get("/suggestions")
