@@ -32,6 +32,14 @@ def _disabled_payload() -> dict[str, Any]:
     }
 
 
+@router.get("/status")
+def musicatlas_status(request: Request) -> dict[str, Any]:
+    client = _call_musicatlas(request)
+    if client is None:
+        return {"enabled": False, "message": _DISABLED_MESSAGE}
+    return {"enabled": True, "message": None}
+
+
 def _call_musicatlas(request: Request) -> Any:
     client = _services(request)["musicatlas"]
     if client is None or not getattr(client, "enabled", False):

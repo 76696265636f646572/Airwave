@@ -42,6 +42,41 @@ class _FakeMusicAtlasClient:
         }
 
 
+def test_musicatlas_status_feature_disabled(tmp_path) -> None:
+    settings = Settings(
+        db_url=f"sqlite+pysqlite:///{tmp_path}/musicatlas_status_disabled.db",
+        yt_dlp_path="/bin/echo",
+        ffmpeg_path="/bin/echo",
+        musicatlas_api_key="",
+    )
+    app = create_app(settings=settings, start_engine=False)
+    with TestClient(app) as client:
+        r = client.get("/api/musicatlas/status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["enabled"] is False
+    assert "not configured" in (data.get("message") or "").lower()
+
+
+def test_musicatlas_status_with_mock_client(tmp_path) -> None:
+    settings = Settings(
+        db_url=f"sqlite+pysqlite:///{tmp_path}/musicatlas_status_enabled.db",
+        yt_dlp_path="/bin/echo",
+        ffmpeg_path="/bin/echo",
+        musicatlas_api_key="dummy-key",
+    )
+    app = create_app(settings=settings, start_engine=False)
+    fake = _FakeMusicAtlasClient()
+    with TestClient(app) as client:
+        app.state.musicatlas_client = fake
+        r = client.get("/api/musicatlas/status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data == {"enabled": True, "message": None}
+    assert fake.similar_tracks_calls == []
+    assert fake.similar_tracks_multi_calls == []
+
+
 def test_musicatlas_suggestions_feature_disabled(tmp_path) -> None:
     settings = Settings(
         db_url=f"sqlite+pysqlite:///{tmp_path}/musicatlas_routes.db",
