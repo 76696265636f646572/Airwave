@@ -69,24 +69,24 @@ DAILY_MUSICATLAS_PLAYLISTS: tuple[DailyMusicAtlasPlaylistDefinition, ...] = (
         description="MusicAtlas daily mix generated from random listening history picks.",
         seed_options=MusicAtlasSeedOptions(history_limit=18, max_seeds=8, include_now_playing=False, randomize_history=True),
     ),
-    # DailyMusicAtlasPlaylistDefinition(
-    #     source_url="custom://daily_3",
-    #     title="Daily Mix 3",
-    #     description="MusicAtlas daily mix generated from now playing plus random recent history picks.",
-    #     seed_options=MusicAtlasSeedOptions(history_limit=12, max_seeds=4, include_now_playing=True, randomize_history=True),
-    # ),
-    # DailyMusicAtlasPlaylistDefinition(
-    #     source_url="custom://daily_4",
-    #     title="Daily Mix 4",
-    #     description="MusicAtlas daily mix generated from a broader random history blend.",
-    #     seed_options=MusicAtlasSeedOptions(history_limit=30, max_seeds=12, include_now_playing=True, randomize_history=True),
-    # ),
-    # DailyMusicAtlasPlaylistDefinition(
-    #     source_url="custom://daily_5",
-    #     title="Daily Mix 5",
-    #     description="MusicAtlas daily mix using a fallback history-heavy seed set.",
-    #     seed_options=MusicAtlasSeedOptions(history_limit=25, max_seeds=10, include_now_playing=False),
-    # ),
+    DailyMusicAtlasPlaylistDefinition(
+        source_url="custom://daily_3",
+        title="Daily Mix 3",
+        description="MusicAtlas daily mix generated from now playing plus random recent history picks.",
+        seed_options=MusicAtlasSeedOptions(history_limit=12, max_seeds=4, include_now_playing=True, randomize_history=True),
+    ),
+    DailyMusicAtlasPlaylistDefinition(
+        source_url="custom://daily_4",
+        title="Daily Mix 4",
+        description="MusicAtlas daily mix generated from a broader random history blend.",
+        seed_options=MusicAtlasSeedOptions(history_limit=30, max_seeds=12, include_now_playing=True, randomize_history=True),
+    ),
+    DailyMusicAtlasPlaylistDefinition(
+        source_url="custom://daily_5",
+        title="Daily Mix 5",
+        description="MusicAtlas daily mix using a fallback history-heavy seed set.",
+        seed_options=MusicAtlasSeedOptions(history_limit=25, max_seeds=10, include_now_playing=False),
+    ),
 )
 
 
@@ -621,8 +621,8 @@ class DailyMusicAtlasPlaylistRunner:
 
     def seconds_until_next_run(self, now: datetime | None = None) -> float:
         current = (now or self._now_factory()).astimezone()
-        # next_midnight = current.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        next_midnight = current + timedelta(minutes=1)
+        next_midnight = current.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        # next_midnight = current + timedelta(minutes=1)
 
         return max(1.0, (next_midnight - current).total_seconds())
 
