@@ -271,13 +271,17 @@ class SendspinServerService:
             logger.exception("Error handling controller event %s", type(event).__name__)
 
     def push_state_update(self) -> None:
-        """Called by the stream engine when playback state changes."""
+        """Called by the stream engine when playback state changes.
+
+        NOTE: Do NOT call _notify_clients_changed() here -- the caller
+        (notify_ui_state_changed in main.py) already publishes a UI snapshot
+        and that callback is wired back to this method, which would recurse.
+        """
         if not self._server or not self._group:
             return
         self._push_metadata()
         self._push_artwork_if_changed()
         self._sync_controller_state_from_group()
-        self._notify_clients_changed()
 
     def _sync_controller_state_from_group(self) -> None:
         if not self._group:
