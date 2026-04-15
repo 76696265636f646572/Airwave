@@ -60,6 +60,17 @@
     </UButton>
     <UButton
       type="button"
+      :color="mobileView === MOBILE_VIEW_CLIENTS ? 'primary' : 'neutral'"
+      :variant="mobileView === MOBILE_VIEW_CLIENTS ? 'soft' : 'ghost'"
+      class="flex min-h-[2.75rem] min-w-[2.75rem] flex-col gap-0.5 p-2"
+      aria-label="SendSpin clients"
+      @click="mobileView = MOBILE_VIEW_CLIENTS"
+    >
+      <UIcon name="i-bi-display" class="size-5" />
+      <span class="text-xs">Clients</span>
+    </UButton>
+    <UButton
+      type="button"
       :color="isActiveSettings ? 'primary' : 'neutral'"
       :variant="isActiveSettings ? 'soft' : 'ghost'"
       class="flex min-h-[2.75rem] min-w-[2.75rem] flex-col gap-0.5 p-2"
@@ -81,6 +92,7 @@ import {
   MOBILE_VIEW_PLAYLISTS,
   MOBILE_VIEW_QUEUE,
   MOBILE_VIEW_SONOS,
+  MOBILE_VIEW_CLIENTS,
   useUiState,
 } from "../composables/useUiState";
 

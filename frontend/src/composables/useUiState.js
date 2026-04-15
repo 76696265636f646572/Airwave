@@ -5,6 +5,7 @@ const SIDEBAR_TAB_STORAGE_KEY = "airwave:settings:sidebar-tab";
 
 export const SIDEBAR_QUEUE_VIEW = "queue";
 export const SIDEBAR_SONOS_VIEW = "sonos";
+export const SIDEBAR_CLIENTS_VIEW = "clients";
 export const QUEUE_TAB = "queue";
 export const HISTORY_TAB = "history";
 
@@ -23,6 +24,7 @@ export const MOBILE_VIEW_HOME = "home";
 export const MOBILE_VIEW_PLAYLISTS = "playlists";
 export const MOBILE_VIEW_QUEUE = "queue";
 export const MOBILE_VIEW_SONOS = "sonos";
+export const MOBILE_VIEW_CLIENTS = "clients";
 export const mobileView = ref(MOBILE_VIEW_HOME);
 
 let initialized = false;
@@ -48,7 +50,7 @@ function writeStoredSetting(key, value) {
 function applyStoredSidebarSettings() {
   const storedView = readStoredSetting(SIDEBAR_VIEW_STORAGE_KEY);
   const storedTab = readStoredSetting(SIDEBAR_TAB_STORAGE_KEY);
-  if (storedView === SIDEBAR_QUEUE_VIEW || storedView === SIDEBAR_SONOS_VIEW) {
+  if (storedView === SIDEBAR_QUEUE_VIEW || storedView === SIDEBAR_SONOS_VIEW || storedView === SIDEBAR_CLIENTS_VIEW) {
     sidebarView.value = storedView;
   }
   if (storedTab === QUEUE_TAB || storedTab === HISTORY_TAB) {

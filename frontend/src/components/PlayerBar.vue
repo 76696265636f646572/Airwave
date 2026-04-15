@@ -161,6 +161,15 @@
               :class="{ 'invisible': speakers.length === 0 }"
               @click="toggleRightSidebar(SIDEBAR_SONOS_VIEW)"
             />
+            <UButton
+              type="button"
+              :color="clientsSidebarButtonActive ? 'primary' : 'neutral'"
+              :variant="clientsSidebarButtonActive ? 'soft' : 'ghost'"
+              icon="i-bi-display"
+              aria-label="Show SendSpin clients"
+              class="cursor-pointer"
+              @click="toggleRightSidebar(SIDEBAR_CLIENTS_VIEW)"
+            />
           </div>
         <a
           class="mr-1 text-xs font-medium text-emerald-400 hover:text-emerald-300"
@@ -175,11 +184,11 @@
           color="primary"
           variant="soft"
           size="xs"
-          :disabled="!playbackState.stream_url || isLocalPlaybackActive"
+          :disabled="isLocalPlaybackActive"
           class="cursor-pointer"
           @click="startLocalPlayback"
         >
-          Play Local
+          Connect
         </UButton>
         <UButton
           type="button"
@@ -190,7 +199,7 @@
           class="cursor-pointer"
           @click="stopLocalPlayback"
         >
-          Stop Local
+          Disconnect
         </UButton>
         <div class="ml-1 flex w-[220px] items-center gap-2">
           <UButton
@@ -230,7 +239,7 @@ import { useLibraryState } from "../composables/useLibraryState";
 import { usePlaybackState } from "../composables/usePlaybackState";
 import { useSonosState } from "../composables/useSonosState";
 
-import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, useUiState } from "../composables/useUiState";
+import { SIDEBAR_QUEUE_VIEW, SIDEBAR_SONOS_VIEW, SIDEBAR_CLIENTS_VIEW, useUiState } from "../composables/useUiState";
 
 const {
   startLocalPlayback,
@@ -265,6 +274,13 @@ const sonosSidebarButtonActive = computed(() => {
     return rightSidebarOpen.value && sidebarView.value === SIDEBAR_SONOS_VIEW;
   }
   return sidebarView.value === SIDEBAR_SONOS_VIEW;
+});
+
+const clientsSidebarButtonActive = computed(() => {
+  if (isTabletLayout.value) {
+    return rightSidebarOpen.value && sidebarView.value === SIDEBAR_CLIENTS_VIEW;
+  }
+  return sidebarView.value === SIDEBAR_CLIENTS_VIEW;
 });
 
 const playPauseIcon = computed(() =>

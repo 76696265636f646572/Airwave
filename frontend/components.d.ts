@@ -24,6 +24,7 @@ declare module 'vue' {
     QueuePanel: typeof import('./src/components/QueuePanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SendspinClientsPanel: typeof import('./src/components/SendspinClientsPanel.vue')['default']
     SidebarPlaylists: typeof import('./src/components/SidebarPlaylists.vue')['default']
     Song: typeof import('./src/components/Song.vue')['default']
     SongProgress: typeof import('./src/components/SongProgress.vue')['default']
