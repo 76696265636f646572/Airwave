@@ -209,7 +209,7 @@
             </div>
 
             <div v-if="isClientExpanded(client.client_id)" class="mt-4 border-t playlist-card">
-              <div class="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-2">
+              <div v-if="!isThisBrowser(client)" class="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-2">
                 <label
                   class="min-w-0 truncate text-sm font-medium"
                   :for="`sendspin-volume-${client.client_id}`"
@@ -229,7 +229,7 @@
                 />
               </div>
 
-              <div class="mt-4 grid grid-cols-4 gap-2 overflow-hidden">
+              <div v-if="!isThisBrowser(client)" class="mt-4 grid grid-cols-4 gap-2 overflow-hidden">
                 <UButton
                   v-for="preset in volumePresets"
                   :key="preset.value"
