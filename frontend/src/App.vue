@@ -63,16 +63,10 @@
                 </UTabs>
               </div>
               <div
-                v-show="mobileView === MOBILE_VIEW_SONOS"
-                class="mobile-pane min-h-0 w-full flex-none md:flex-1 overflow-visible md:overflow-auto rounded-xl border border-neutral-700 surface-panel"
-              >
-                <SonosPanel class="min-h-0 h-full" />
-              </div>
-              <div
-                v-show="mobileView === MOBILE_VIEW_CLIENTS"
+                v-show="mobileView === MOBILE_VIEW_SPEAKERS"
                 class="mobile-pane min-h-0 w-full flex-none md:flex-1 overflow-visible md:overflow-auto"
               >
-                <SendspinClientsPanel class="min-h-0 h-full" />
+                <SpeakerPanel class="min-h-0 h-full" />
               </div>
             </template>
           </main>
@@ -100,9 +94,7 @@
               </UTabs>
             </template>
 
-            <SonosPanel v-else-if="sidebarView === SIDEBAR_SONOS_VIEW" class="min-h-0 flex-1" />
-
-            <SendspinClientsPanel v-else-if="sidebarView === SIDEBAR_CLIENTS_VIEW" class="min-h-0 flex-1" />
+            <SpeakerPanel v-else-if="sidebarView === SIDEBAR_SPEAKERS_VIEW" class="min-h-0 flex-1" />
           </aside>
         </div>
       </div>
@@ -131,8 +123,7 @@ import MobileNavBar from "./components/MobileNavBar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import QueuePanel from "./components/QueuePanel.vue";
 import SidebarPlaylists from "./components/SidebarPlaylists.vue";
-import SendspinClientsPanel from "./components/SendspinClientsPanel.vue";
-import SonosPanel from "./components/SonosPanel.vue";
+import SpeakerPanel from "./components/SpeakerPanel.vue";
 import TopBar from "./components/TopBar.vue";
 import { useBreakpoint } from "./composables/useBreakpoint";
 import { useMediaSession } from "./composables/useMediaSession";
@@ -145,10 +136,9 @@ import {
   MOBILE_VIEW_HOME,
   MOBILE_VIEW_PLAYLISTS,
   MOBILE_VIEW_QUEUE,
-  MOBILE_VIEW_SONOS,
-  MOBILE_VIEW_CLIENTS,
+  MOBILE_VIEW_SPEAKERS,
   SIDEBAR_QUEUE_VIEW,
-  SIDEBAR_CLIENTS_VIEW,
+  SIDEBAR_SPEAKERS_VIEW,
   useUiState,
 } from "./composables/useUiState";
 import { initializeTheme } from "./composables/useTheme";
