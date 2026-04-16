@@ -50,6 +50,24 @@ const sendspinClients = ref([]);
 const sendspinGroup = ref({ volume: 0, muted: false });
 const sendspinPort = ref(8927);
 
+let _activePlayer = null;
+let _activeConnected = null;
+
+/**
+ * Send a SendSpin controller command if the browser client is connected.
+ * Returns true when the command was dispatched, false otherwise (caller
+ * should fall back to HTTP).
+ */
+export function sendSpinCommand(command, params) {
+  if (!_activePlayer || !(_activeConnected?.value)) return false;
+  try {
+    _activePlayer.sendCommand(command, params);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clampPercent(value) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return null;
@@ -241,6 +259,8 @@ export function useSendspinPlayer() {
 
     await player.connect();
     isConnected.value = true;
+    _activePlayer = player;
+    _activeConnected = isConnected;
 
     player.setVolume(volume.value);
     player.setMuted(muted.value);
@@ -252,6 +272,8 @@ export function useSendspinPlayer() {
       player.disconnect(reason);
       player = null;
     }
+    _activePlayer = null;
+    _activeConnected = null;
     isConnected.value = false;
     isPlaying.value = false;
   }
@@ -292,6 +314,16 @@ export function useSendspinPlayer() {
     correctionMode.value = mode;
     if (player) {
       player.setCorrectionMode(mode);
+    }
+  }
+
+  function sendCommand(command, params) {
+    if (!player || !isConnected.value) return false;
+    try {
+      player.sendCommand(command, params);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -344,6 +376,7 @@ export function useSendspinPlayer() {
 
     connect,
     disconnect,
+    sendCommand,
     setVolume,
     setMuted,
     toggleMuted,

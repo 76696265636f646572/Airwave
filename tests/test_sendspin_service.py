@@ -360,20 +360,20 @@ def test_push_state_update_noop_without_group():
 # Controller event handling
 # ---------------------------------------------------------------------------
 
-def test_handle_play_event_unpauses():
+def test_handle_play_event_calls_resume():
     svc = _make_service()
     svc._stream_engine.state.paused = True  # noqa: SLF001
     from aiosendspin.server.roles import ControllerPlayEvent
     svc._handle_controller_event(ControllerPlayEvent())  # noqa: SLF001
-    svc._stream_engine.toggle_pause.assert_called_once()  # noqa: SLF001
+    svc._stream_engine.resume_playback.assert_called_once()  # noqa: SLF001
 
 
-def test_handle_play_event_noop_when_not_paused():
+def test_handle_play_event_resume_when_not_paused():
     svc = _make_service()
     svc._stream_engine.state.paused = False  # noqa: SLF001
     from aiosendspin.server.roles import ControllerPlayEvent
     svc._handle_controller_event(ControllerPlayEvent())  # noqa: SLF001
-    svc._stream_engine.toggle_pause.assert_not_called()  # noqa: SLF001
+    svc._stream_engine.resume_playback.assert_called_once()  # noqa: SLF001
 
 
 def test_handle_pause_event_pauses_when_playing():

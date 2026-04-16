@@ -240,13 +240,12 @@ class SendspinServerService:
         engine = self._stream_engine
         try:
             if isinstance(event, ControllerPlayEvent):
-                if engine.state.paused:
-                    engine.toggle_pause()
+                engine.resume_playback()
             elif isinstance(event, ControllerPauseEvent):
                 if not engine.state.paused and engine.state.mode == PlaybackMode.playing:
                     engine.toggle_pause()
             elif isinstance(event, ControllerStopEvent):
-                engine.skip_current()
+                engine.stop_playback()
             elif isinstance(event, ControllerNextEvent):
                 engine.skip_current()
             elif isinstance(event, ControllerPreviousEvent):
