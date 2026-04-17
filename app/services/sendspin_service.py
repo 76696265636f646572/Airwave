@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 SENDSPIN_SAMPLE_RATE = 48000
 SENDSPIN_CHANNELS = 2
-SENDSPIN_BIT_DEPTH = 16
+SENDSPIN_BIT_DEPTH = 24
 SENDSPIN_BYTES_PER_SAMPLE = SENDSPIN_BIT_DEPTH // 8
 SENDSPIN_FRAME_BYTES = SENDSPIN_CHANNELS * SENDSPIN_BYTES_PER_SAMPLE
 
@@ -131,6 +131,10 @@ class SendspinServerService:
 
         self._last_track_id: int | None = None
         self._last_artwork_url: str | None = None
+
+        # Last PCM decode session (for seek/resume: stream/clear + restart ffmpeg)
+        self._sendspin_pcm_track_id: int | None = None
+        self._sendspin_pcm_anchor_monotonic: float | None = None
 
     @property
     def server(self) -> SendspinServer | None:
@@ -464,6 +468,32 @@ class SendspinServerService:
                 if not self._audio_stop_event.wait(1.0):
                     continue
 
+    def _maybe_clear_push_stream_for_timeline_jump(self, state: Any) -> None:
+        """Send Sendspin stream/clear when the playback clock jumps on the same track."""
+        loop = self._loop
+        if not loop or not self._push_stream or self._push_stream.is_stopped:
+            return
+        track_id = state.now_playing_id
+        anchor = state.started_at_monotonic_seconds
+        if (
+            track_id is None
+            or track_id != self._sendspin_pcm_track_id
+            or self._sendspin_pcm_anchor_monotonic is None
+            or anchor is None
+            or anchor == self._sendspin_pcm_anchor_monotonic
+        ):
+            return
+
+        async def _clear_push_stream() -> None:
+            if self._push_stream and not self._push_stream.is_stopped:
+                self._push_stream.clear()
+
+        future = asyncio.run_coroutine_threadsafe(_clear_push_stream(), loop)
+        try:
+            future.result(timeout=2.0)
+        except Exception:
+            pass
+
     def _audio_feed_cycle(self) -> None:
         engine = self._stream_engine
 
@@ -476,6 +506,8 @@ class SendspinServerService:
         if not stream_url:
             self._feed_silence_until_state_change()
             return
+
+        self._maybe_clear_push_stream_for_timeline_jump(state)
 
         seek_offset = 0.0
         progress = engine.playback_progress()
@@ -496,12 +528,17 @@ class SendspinServerService:
             self._push_silence_chunk()
             return
 
+        state = engine.state
+        self._sendspin_pcm_track_id = state.now_playing_id
+        self._sendspin_pcm_anchor_monotonic = state.started_at_monotonic_seconds
+
         with self._process_lock:
             self._active_process = process
 
         tracking_track_id = state.now_playing_id
+        spawn_anchor = state.started_at_monotonic_seconds
         try:
-            self._stream_pcm_from_process(process, tracking_track_id)
+            self._stream_pcm_from_process(process, tracking_track_id, spawn_anchor)
         finally:
             with self._process_lock:
                 self._active_process = None
@@ -531,6 +568,7 @@ class SendspinServerService:
         self,
         process: subprocess.Popen[bytes],
         tracking_track_id: int | None,
+        spawn_anchor_monotonic: float | None,
     ) -> None:
         engine = self._stream_engine
 
@@ -541,6 +579,13 @@ class SendspinServerService:
             if state.paused:
                 break
             if state.mode != PlaybackMode.playing:
+                break
+            if (
+                tracking_track_id is not None
+                and spawn_anchor_monotonic is not None
+                and state.started_at_monotonic_seconds is not None
+                and state.started_at_monotonic_seconds != spawn_anchor_monotonic
+            ):
                 break
 
             chunk = process.stdout.read(PCM_CHUNK_BYTES) if process.stdout else b""

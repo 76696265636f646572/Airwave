@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
@@ -7,7 +8,12 @@ from unittest.mock import MagicMock
 
 from aiosendspin.models.types import PlaybackStateType
 
-from app.services.sendspin_service import REPEAT_MAP_TO_AIRWAVE, REPEAT_MAP_TO_SENDSPIN, SendspinServerService
+from app.services.sendspin_service import (
+    PCM_CHUNK_BYTES,
+    REPEAT_MAP_TO_AIRWAVE,
+    REPEAT_MAP_TO_SENDSPIN,
+    SendspinServerService,
+)
 from app.services.stream_engine import PlaybackMode, RepeatMode
 
 
@@ -494,6 +500,85 @@ def test_repeat_map_roundtrip():
         sendspin_mode = REPEAT_MAP_TO_SENDSPIN[airwave_mode]
         back = REPEAT_MAP_TO_AIRWAVE[sendspin_mode]
         assert back == airwave_mode.value
+
+
+# ---------------------------------------------------------------------------
+# Timeline seek / stream/clear
+# ---------------------------------------------------------------------------
+
+def test_maybe_clear_push_stream_calls_clear_when_same_track_anchor_changes(monkeypatch):
+    svc = _make_service()
+    loop = asyncio.new_event_loop()
+    svc._loop = loop
+    push = MagicMock()
+    push.is_stopped = False
+    svc._push_stream = push
+    svc._sendspin_pcm_track_id = 10
+    svc._sendspin_pcm_anchor_monotonic = 100.0
+    state = SimpleNamespace(now_playing_id=10, started_at_monotonic_seconds=200.0)
+
+    def sync_run_coroutine_threadsafe(coro, loop_arg):
+        loop_arg.run_until_complete(coro)
+        fut = loop_arg.create_future()
+        fut.set_result(None)
+        return fut
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", sync_run_coroutine_threadsafe)
+    try:
+        svc._maybe_clear_push_stream_for_timeline_jump(state)
+    finally:
+        loop.close()
+
+    push.clear.assert_called_once()
+
+
+def test_maybe_clear_push_stream_skips_when_track_changes():
+    svc = _make_service()
+    svc._loop = asyncio.new_event_loop()
+    push = MagicMock()
+    push.is_stopped = False
+    svc._push_stream = push
+    svc._sendspin_pcm_track_id = 10
+    svc._sendspin_pcm_anchor_monotonic = 100.0
+    state = SimpleNamespace(now_playing_id=11, started_at_monotonic_seconds=200.0)
+    svc._maybe_clear_push_stream_for_timeline_jump(state)
+    push.clear.assert_not_called()
+
+
+def test_maybe_clear_push_stream_skips_when_anchor_unchanged():
+    svc = _make_service()
+    svc._loop = asyncio.new_event_loop()
+    push = MagicMock()
+    push.is_stopped = False
+    svc._push_stream = push
+    svc._sendspin_pcm_track_id = 10
+    svc._sendspin_pcm_anchor_monotonic = 100.0
+    state = SimpleNamespace(now_playing_id=10, started_at_monotonic_seconds=100.0)
+    svc._maybe_clear_push_stream_for_timeline_jump(state)
+    push.clear.assert_not_called()
+
+
+def test_stream_pcm_from_process_breaks_when_timeline_anchor_changes():
+    svc = _make_service()
+    engine = svc._stream_engine
+    state_holder = SimpleNamespace(
+        now_playing_id=1,
+        paused=False,
+        mode=PlaybackMode.playing,
+        started_at_monotonic_seconds=100.0,
+    )
+    engine.state = state_holder
+    svc._push_pcm_chunk = MagicMock(
+        side_effect=lambda _b: setattr(state_holder, "started_at_monotonic_seconds", 200.0)
+    )
+    proc = MagicMock()
+    proc.stdout = MagicMock()
+    proc.stdout.read.return_value = b"x" * PCM_CHUNK_BYTES
+
+    svc._stream_pcm_from_process(proc, 1, 100.0)
+
+    assert proc.stdout.read.call_count == 1
+    svc._push_pcm_chunk.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
