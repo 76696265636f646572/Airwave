@@ -142,9 +142,10 @@ class SendspinServerService:
 
     async def start(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
+        server_id = f"{self._server_name.lower().replace(' ', '-')}"
         self._server = SendspinServer(
             loop=loop,
-            server_id="airwave-sendspin",
+            server_id=server_id,
             server_name=self._server_name,
         )
         self._unsubscribe_server = self._server.add_event_listener(self._on_server_event)

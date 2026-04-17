@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     )
     sendspin_enabled: bool = True
     sendspin_port: int = 8927
-    sendspin_name: str = "Airwave"
+    sendspin_name: str = Field(default="Airwave", description="Name of the SendSpin server")
     sendspin_mdns_enabled: bool = True
 
     @staticmethod
