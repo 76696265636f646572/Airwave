@@ -609,7 +609,9 @@ class SendspinServerService:
                 or state.now_playing_id != last_track_id
             ):
                 break
-            self._push_silence_chunk()
+            if not self._push_silence_chunk():
+                if self._audio_stop_event.wait(0.02):
+                    break
 
     def _stream_pcm_from_process(
         self,
