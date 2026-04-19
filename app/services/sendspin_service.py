@@ -136,6 +136,9 @@ class SendspinServerService:
         self._sendspin_pcm_track_id: int | None = None
         self._sendspin_pcm_anchor_monotonic: float | None = None
 
+        # Previous snapshot for push_state_update (pause / stop / track change → stream/clear)
+        self._last_push_snapshot_for_clear: tuple[int | None, PlaybackMode, bool] | None = None
+
     @property
     def server(self) -> SendspinServer | None:
         return self._server
@@ -276,6 +279,7 @@ class SendspinServerService:
         # back or the callback loop will recurse.
         if not self._server or not self._group:
             return
+        self._maybe_clear_push_stream_for_playback_snapshot_change()
         self._sync_group_playback_state()
         self._push_metadata()
         self._push_artwork_if_changed()
@@ -468,20 +472,10 @@ class SendspinServerService:
                 if not self._audio_stop_event.wait(1.0):
                     continue
 
-    def _maybe_clear_push_stream_for_timeline_jump(self, state: Any) -> None:
-        """Send Sendspin stream/clear when the playback clock jumps on the same track."""
+    def _clear_push_stream_sync(self) -> None:
+        """Send Sendspin stream/clear and reset push-stream buffers (player + visualizer)."""
         loop = self._loop
         if not loop or not self._push_stream or self._push_stream.is_stopped:
-            return
-        track_id = state.now_playing_id
-        anchor = state.started_at_monotonic_seconds
-        if (
-            track_id is None
-            or track_id != self._sendspin_pcm_track_id
-            or self._sendspin_pcm_anchor_monotonic is None
-            or anchor is None
-            or anchor == self._sendspin_pcm_anchor_monotonic
-        ):
             return
 
         async def _clear_push_stream() -> None:
@@ -494,18 +488,71 @@ class SendspinServerService:
         except Exception:
             pass
 
+    def _maybe_clear_push_stream_for_playback_snapshot_change(self) -> None:
+        """Emit stream/clear on pause, stop, next, or previous (same as spec seek boundaries)."""
+        state = self._stream_engine.state
+        prev = self._last_push_snapshot_for_clear
+        need_clear = False
+        if prev is not None:
+            prev_track, prev_mode, prev_paused = prev
+            if state.paused and not prev_paused:
+                need_clear = True
+            elif state.mode == PlaybackMode.idle and prev_mode != PlaybackMode.idle:
+                need_clear = True
+            elif prev_track is not None and state.now_playing_id != prev_track:
+                need_clear = True
+        self._last_push_snapshot_for_clear = (
+            state.now_playing_id,
+            state.mode,
+            state.paused,
+        )
+        if need_clear:
+            self._clear_push_stream_sync()
+
+    def _reset_sendspin_pcm_session(self) -> None:
+        self._sendspin_pcm_track_id = None
+        self._sendspin_pcm_anchor_monotonic = None
+
+    def _maybe_clear_push_stream_for_timeline_jump(self, state: Any) -> None:
+        """Send stream/clear when the playback clock jumps on the same track."""
+        track_id = state.now_playing_id
+        anchor = state.started_at_monotonic_seconds
+        if (
+            track_id is None
+            or track_id != self._sendspin_pcm_track_id
+            or self._sendspin_pcm_anchor_monotonic is None
+            or anchor is None
+            or anchor == self._sendspin_pcm_anchor_monotonic
+        ):
+            return
+        self._clear_push_stream_sync()
+
     def _audio_feed_cycle(self) -> None:
         engine = self._stream_engine
+        state = engine.state
 
-        if engine.state.mode != PlaybackMode.playing or engine.state.paused:
+        # Pause / stop / idle: clear once so clients drop buffered audio.
+        if state.mode != PlaybackMode.playing or state.paused:
+            if self._sendspin_pcm_track_id is not None:
+                self._clear_push_stream_sync()
+                self._reset_sendspin_pcm_session()
             self._feed_silence_until_state_change()
             return
 
-        state = engine.state
         stream_url = self._get_current_stream_url()
         if not stream_url:
+            if self._sendspin_pcm_track_id is not None:
+                self._clear_push_stream_sync()
+                self._reset_sendspin_pcm_session()
             self._feed_silence_until_state_change()
             return
+
+        # Track change: clear before decoding the next item.
+        if (
+            self._sendspin_pcm_track_id is not None
+            and state.now_playing_id != self._sendspin_pcm_track_id
+        ):
+            self._clear_push_stream_sync()
 
         self._maybe_clear_push_stream_for_timeline_jump(state)
 

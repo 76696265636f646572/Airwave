@@ -582,6 +582,67 @@ def test_stream_pcm_from_process_breaks_when_timeline_anchor_changes():
 
 
 # ---------------------------------------------------------------------------
+# Playback snapshot → stream/clear (pause / stop / next / previous)
+# ---------------------------------------------------------------------------
+
+def test_snapshot_clear_emits_on_pause():
+    svc = _make_service()
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 1
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    st.paused = True
+    svc._maybe_clear_push_stream_for_playback_snapshot_change()
+    assert len(clears) == 1
+
+
+def test_snapshot_clear_emits_on_stop():
+    svc = _make_service()
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 1
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    st.mode = PlaybackMode.idle
+    st.now_playing_id = None
+    svc._maybe_clear_push_stream_for_playback_snapshot_change()
+    assert len(clears) == 1
+
+
+def test_snapshot_clear_emits_on_track_change():
+    svc = _make_service()
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 1
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    st.now_playing_id = 2
+    svc._maybe_clear_push_stream_for_playback_snapshot_change()
+    assert len(clears) == 1
+
+
+def test_snapshot_clear_skips_first_transition():
+    svc = _make_service()
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 1
+    svc._last_push_snapshot_for_clear = None
+    svc._maybe_clear_push_stream_for_playback_snapshot_change()
+    assert len(clears) == 0
+    assert svc._last_push_snapshot_for_clear == (1, PlaybackMode.playing, False)
+
+
+# ---------------------------------------------------------------------------
 # _notify_clients_changed resilience
 # ---------------------------------------------------------------------------
 
