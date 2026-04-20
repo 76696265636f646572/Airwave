@@ -234,8 +234,12 @@ def test_set_group_volume_validates_range(tmp_path):
     with client:
         fake = FakeSendspinService()
         app.state.sendspin_service = fake
-        resp = client.post("/api/sendspin/group/volume", json={"volume": 101})
-        assert resp.status_code == 422
+        resp_over = client.post("/api/sendspin/group/volume", json={"volume": 101})
+        assert resp_over.status_code == 422
+
+        # VolumeBody contract: volume is Field(ge=0, le=100)
+        resp_under = client.post("/api/sendspin/group/volume", json={"volume": -5})
+        assert resp_under.status_code == 422
 
 
 # ---------------------------------------------------------------------------
