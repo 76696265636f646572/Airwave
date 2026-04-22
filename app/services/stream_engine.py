@@ -605,7 +605,8 @@ class StreamEngine:
         item = self.repository.get_item(item_id)
         if not item:
             return None
-        return item.normalized_url or item.source_url
+        return item.resolved_stream_url or item.normalized_url or item.source_url  
+
 
     def _record_streamed_chunk(self, chunk_size: int) -> None:
         with self._stats_lock:

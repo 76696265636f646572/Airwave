@@ -294,7 +294,6 @@ class FfmpegPipeline:
             args.extend(["-ss", f"{float(start_at_seconds):.3f}"])
         args.extend(
             [
-                "-re",
                 "-i",
                 source_url,
                 "-vn",
@@ -320,6 +319,7 @@ class FfmpegPipeline:
     ) -> subprocess.Popen[bytes]:
         fmt = f"s{bit_depth}le"
         args = [
+            "-re",
             "-i",
             "pipe:0",
             "-vn",
