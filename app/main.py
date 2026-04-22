@@ -150,7 +150,6 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
             if sendspin_service and start_engine:
                 await sendspin_service.start(asyncio.get_running_loop())
             yield
-            yield
         except asyncio.CancelledError:
             # Uvicorn may cancel lifespan tasks during reload/shutdown.
             # Treat this as a normal shutdown path.
