@@ -87,10 +87,18 @@ class SharedMp3Hub:
     def publish(self, data: bytes) -> None:
         with self._lock:
             clients = list(self._clients.values())
+            subscriber_count = len(clients)
         for q in clients:
             try:
                 q.put_nowait(data)
             except queue.Full:
+                logger.warning(
+                    "MP3 hub client queue full: dropped oldest chunk to keep stream live "
+                    "(subscriber_count=%s queue_maxsize=%s chunk_bytes=%s)",
+                    subscriber_count,
+                    self._stream_queue_size,
+                    len(data),
+                )
                 try:
                     q.get_nowait()
                 except queue.Empty:
@@ -98,6 +106,12 @@ class SharedMp3Hub:
                 try:
                     q.put_nowait(data)
                 except queue.Full:
+                    logger.warning(
+                        "MP3 hub client queue still full after drop; skipping chunk for one client "
+                        "(queue_maxsize=%s chunk_bytes=%s)",
+                        self._stream_queue_size,
+                        len(data),
+                    )
                     continue
 
     def clear(self) -> None:
@@ -421,6 +435,7 @@ class StreamEngine:
 
     def _prefetch_audio_for_item(self, queue_item_id: int, source_url: str) -> None:
         if self._get_prefetched_audio_path(queue_item_id) is not None:
+            logger.debug("Prefetch skip item %s (already cached)", queue_item_id)
             return
         source_process = self.yt_dlp_service.spawn_audio_stream(source_url)
         temp_path = os.path.join(self._prefetched_audio_dir, f"{queue_item_id}.bin")
@@ -619,8 +634,17 @@ class StreamEngine:
         item = self.repository.get_item(item_id)
         if not item:
             return None
-        return item.resolved_stream_url or item.normalized_url or item.source_url  
+        return item.resolved_stream_url or item.normalized_url or item.source_url
 
+    def get_current_ffmpeg_input(self) -> str | None:
+        """Prefer prefetched on-disk audio (same as live MP3) so PCM avoids a second remote demux."""
+        item_id = self.state.now_playing_id
+        if item_id is None:
+            return None
+        prefetched = self._get_prefetched_audio_path(item_id)
+        if prefetched is not None:
+            return prefetched
+        return self.get_current_stream_url()
 
     def _record_streamed_chunk(self, chunk_size: int) -> None:
         with self._stats_lock:
@@ -959,7 +983,20 @@ class StreamEngine:
                         while not self._stop_event.is_set():
                             if self._skip_event.is_set():
                                 raise InterruptedError(self._consume_interrupt_reason())
+                            read_started = time.monotonic()
                             chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
+                            read_seconds = time.monotonic() - read_started
+                            if chunk and read_seconds >= 0.3:
+                                logger.warning(
+                                    "Slow ffmpeg read while streaming track_id=%s attempt=%s chunk_index=%s "
+                                    "read_seconds=%.3f requested_bytes=%s received_bytes=%s",
+                                    queue_item.id,
+                                    attempt,
+                                    attempt_chunks_sent,
+                                    read_seconds,
+                                    self.chunk_size,
+                                    len(chunk),
+                                )
                             if not chunk:
                                 ffmpeg_stderr_pipe = getattr(process, "stderr", None)
                                 ffmpeg_stderr_snapshot = (

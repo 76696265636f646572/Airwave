@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import io
 import logging
 import subprocess
@@ -539,8 +540,8 @@ class SendspinServerService:
             self._feed_silence_until_state_change()
             return
 
-        stream_url = self._get_current_stream_url()
-        if not stream_url:
+        pcm_source = self._get_pcm_ffmpeg_input()
+        if not pcm_source:
             if self._sendspin_pcm_track_id is not None:
                 self._clear_push_stream_sync()
                 self._reset_sendspin_pcm_session()
@@ -564,7 +565,7 @@ class SendspinServerService:
 
         try:
             process = self._ffmpeg_pipeline.spawn_pcm_for_source(
-                stream_url,
+                pcm_source,
                 start_at_seconds=seek_offset,
                 sample_rate=SENDSPIN_SAMPLE_RATE,
                 channels=SENDSPIN_CHANNELS,
@@ -637,7 +638,16 @@ class SendspinServerService:
             ):
                 break
 
+            read_started = time.monotonic()
             chunk = process.stdout.read(PCM_CHUNK_BYTES) if process.stdout else b""
+            read_seconds = time.monotonic() - read_started
+            if chunk and read_seconds >= 0.08:
+                logger.warning(
+                    "Slow PCM ffmpeg read track_id=%s read_seconds=%.3f chunk_bytes=%s",
+                    tracking_track_id,
+                    read_seconds,
+                    len(chunk),
+                )
             if not chunk:
                 break
 
@@ -661,17 +671,20 @@ class SendspinServerService:
         )
         try:
             future.result(timeout=2.0)
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "SendSpin commit_audio timed out after 2.0s (PCM delivery may stutter)",
+            )
         except Exception:
-            pass
+            logger.warning("SendSpin commit_audio failed", exc_info=True)
 
     async def _commit_audio(self) -> None:
         if self._push_stream and not self._push_stream.is_stopped:
             await self._push_stream.commit_audio()
             await self._push_stream.sleep_to_limit_buffer(MAX_BUFFER_US)
 
-    def _get_current_stream_url(self) -> str | None:
-        engine = self._stream_engine
-        return engine.get_current_stream_url()
+    def _get_pcm_ffmpeg_input(self) -> str | None:
+        return self._stream_engine.get_current_ffmpeg_input()
 
     # --- Public API for REST endpoints ---
 
