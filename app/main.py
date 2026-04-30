@@ -107,6 +107,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
             server_name=settings.sendspin_name,
             port=settings.sendspin_port,
             mdns_enabled=settings.sendspin_mdns_enabled,
+            repository=repository,
             on_clients_changed=notify_ui_state_changed,
         )
         stream_engine.set_pcm_listener_count_provider(sendspin_service.connected_client_count)
@@ -122,6 +123,7 @@ def create_app(settings: Settings | None = None, start_engine: bool = True) -> F
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         repository.init_db()
+        repository.prune_sendspin_clients(days=30)
         ui_events.bind_loop(asyncio.get_running_loop())
         sync_task: asyncio.Task[None] | None = None
 

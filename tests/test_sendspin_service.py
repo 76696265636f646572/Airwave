@@ -212,6 +212,89 @@ def test_connected_client_count_matches_connected_clients():
 
 
 # ---------------------------------------------------------------------------
+# Persisted client volume/mute reconciliation
+# ---------------------------------------------------------------------------
+
+def test_reconcile_connected_client_state_uses_default_when_no_state():
+    repo = MagicMock()
+    repo.get_sendspin_client_state.return_value = (None, None)
+    player = FakePlayerRole(volume=None, muted=None)
+    client = FakeClient(client_id="c1", name="Kitchen", _player_roles=[player])
+    svc = _make_service(repository=repo)
+
+    svc._reconcile_connected_client_state(client)  # noqa: SLF001
+
+    assert player.volume == 50
+    assert player._volume_commands == [50]
+    assert player._mute_commands == []
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Kitchen",
+        volume=50,
+        muted=None,
+    )
+
+
+def test_reconcile_connected_client_state_restores_stored_values():
+    repo = MagicMock()
+    repo.get_sendspin_client_state.return_value = (35, True)
+    player = FakePlayerRole(volume=None, muted=None)
+    client = FakeClient(client_id="c1", name="Kitchen", _player_roles=[player])
+    svc = _make_service(repository=repo)
+
+    svc._reconcile_connected_client_state(client)  # noqa: SLF001
+
+    assert player.volume == 35
+    assert player.muted is True
+    assert player._volume_commands == [35]
+    assert player._mute_commands == [True]
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Kitchen",
+        volume=35,
+        muted=True,
+    )
+
+
+def test_reconcile_connected_client_state_keeps_reported_values():
+    repo = MagicMock()
+    repo.get_sendspin_client_state.return_value = (None, None)
+    player = FakePlayerRole(volume=72, muted=True)
+    client = FakeClient(client_id="c1", name="Kitchen", _player_roles=[player])
+    svc = _make_service(repository=repo)
+
+    svc._reconcile_connected_client_state(client)  # noqa: SLF001
+
+    assert player._volume_commands == []
+    assert player._mute_commands == []
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Kitchen",
+        volume=72,
+        muted=True,
+    )
+
+
+def test_reconcile_connected_client_state_restores_stored_volume_over_default_report():
+    repo = MagicMock()
+    repo.get_sendspin_client_state.return_value = (35, False)
+    player = FakePlayerRole(volume=100, muted=False)
+    client = FakeClient(client_id="c1", name="Kitchen", _player_roles=[player])
+    svc = _make_service(repository=repo)
+
+    svc._reconcile_connected_client_state(client)  # noqa: SLF001
+
+    assert player.volume == 35
+    assert player._volume_commands == [35]
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Kitchen",
+        volume=35,
+        muted=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # get_group_state
 # ---------------------------------------------------------------------------
 
@@ -251,11 +334,18 @@ def test_set_client_volume_updates_player():
     client = FakeClient(client_id="c1", _player_roles=[player])
     server = FakeServer(_clients={"c1": client})
     changed = []
-    svc = _make_service(on_clients_changed=lambda: changed.append(True))
+    repo = MagicMock()
+    svc = _make_service(on_clients_changed=lambda: changed.append(True), repository=repo)
     svc._server = server  # noqa: SLF001
     assert svc.set_client_volume("c1", 85) is True
     assert player.volume == 85
     assert player._volume_commands == [85]
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Test Player",
+        volume=85,
+        muted=False,
+    )
     assert len(changed) == 1
 
 
@@ -276,11 +366,18 @@ def test_set_client_muted_updates_player():
     client = FakeClient(client_id="c1", _player_roles=[player])
     server = FakeServer(_clients={"c1": client})
     changed = []
-    svc = _make_service(on_clients_changed=lambda: changed.append(True))
+    repo = MagicMock()
+    svc = _make_service(on_clients_changed=lambda: changed.append(True), repository=repo)
     svc._server = server  # noqa: SLF001
     assert svc.set_client_muted("c1", True) is True
     assert player.muted is True
     assert player._mute_commands == [True]
+    repo.upsert_sendspin_client_state.assert_called_once_with(
+        "c1",
+        name="Test Player",
+        volume=80,
+        muted=True,
+    )
     assert len(changed) == 1
 
 

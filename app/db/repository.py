@@ -3,14 +3,14 @@ from __future__ import annotations
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Iterator, Optional
 
 from sqlalchemy import Engine, Select, create_engine, delete, func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import Base, PlayHistory, Playlist, PlaylistEntry, QueueItem, QueueStatus, Setting
+from app.db.models import Base, PlayHistory, Playlist, PlaylistEntry, QueueItem, QueueStatus, SendspinClient, Setting
 
 
 @dataclass
@@ -58,6 +58,49 @@ class Repository:
         self._ensure_playlist_sync_columns()
         self._ensure_playlist_entry_upstream_item_id_column()
         self._ensure_liked_songs_playlist_entry()
+
+    def get_sendspin_client_state(self, client_id: str) -> tuple[int | None, bool | None]:
+        client_id = (client_id or "").strip()
+        if not client_id:
+            return (None, None)
+        with self.session() as session:
+            row = session.get(SendspinClient, client_id)
+            if row is None:
+                return (None, None)
+            return (row.volume, row.muted)
+
+    def upsert_sendspin_client_state(
+        self,
+        client_id: str,
+        *,
+        name: str | None = None,
+        volume: int | None = None,
+        muted: bool | None = None,
+    ) -> None:
+        client_id = (client_id or "").strip()
+        if not client_id:
+            return
+        if volume is not None:
+            volume = int(max(0, min(100, volume)))
+        with self.session() as session:
+            row = session.get(SendspinClient, client_id)
+            if row is None:
+                session.add(SendspinClient(client_id=client_id, name=name, volume=volume, muted=muted))
+                return
+            if name is not None:
+                row.name = name
+            if volume is not None:
+                row.volume = volume
+            if muted is not None:
+                row.muted = bool(muted)
+
+    def prune_sendspin_clients(self, days: int = 30) -> int:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        with self.session() as session:
+            result = session.execute(delete(SendspinClient).where(SendspinClient.updated_at < cutoff))
+            return int(result.rowcount or 0)
 
 
     def _ensure_liked_songs_playlist_entry(self) -> None:

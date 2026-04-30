@@ -47,6 +47,7 @@ from aiosendspin.server.roles import (
     PlayerV1Role,
 )
 
+from app.db.repository import Repository
 from app.services.ffmpeg_pipeline import FfmpegError, FfmpegPipeline
 from app.services.stream_engine import PlaybackMode, RepeatMode, StreamEngine
 
@@ -63,6 +64,7 @@ PCM_CHUNK_SAMPLES = SENDSPIN_SAMPLE_RATE * PCM_CHUNK_DURATION_MS // 1000
 PCM_CHUNK_BYTES = PCM_CHUNK_SAMPLES * SENDSPIN_FRAME_BYTES
 
 MAX_BUFFER_US = 2_000_000
+DEFAULT_SENDSPIN_CLIENT_VOLUME = 100
 
 SUPPORTED_COMMANDS = [
     MediaCommand.PLAY,
@@ -102,6 +104,7 @@ class SendspinServerService:
         server_name: str = "Airwave",
         port: int = 8927,
         mdns_enabled: bool = True,
+        repository: Repository | None = None,
         on_clients_changed: Callable[[], None] | None = None,
     ) -> None:
         self._stream_engine = stream_engine
@@ -109,6 +112,7 @@ class SendspinServerService:
         self._server_name = server_name
         self._port = port
         self._mdns_enabled = mdns_enabled
+        self._repository = repository
         self._on_clients_changed = on_clients_changed
 
         self._server: SendspinServer | None = None
@@ -197,12 +201,16 @@ class SendspinServerService:
             client = server.get_client(event.client_id)
             if client:
                 self._setup_client(client)
+                self._reconcile_connected_client_state(client)
             logger.info("SendSpin client connected: %s", event.client_id)
             self._notify_clients_changed()
         elif isinstance(event, ClientRemovedEvent):
             logger.info("SendSpin client disconnected: %s", event.client_id)
             self._notify_clients_changed()
         elif isinstance(event, ClientUpdatedEvent):
+            client = server.get_client(event.client_id)
+            if client:
+                self._persist_client_state(client)
             self._notify_clients_changed()
 
     def _setup_client(self, client: SendspinClient) -> None:
@@ -225,6 +233,70 @@ class SendspinServerService:
 
         self._unsubscribe_group = group.add_event_listener(self._on_group_event)
         self._push_metadata()
+
+    @staticmethod
+    def _first_player_role(client: SendspinClient) -> Any | None:
+        player_roles = client.roles_by_family("player")
+        return player_roles[0] if player_roles else None
+
+    def _reconcile_connected_client_state(self, client: SendspinClient) -> None:
+        player = self._first_player_role(client)
+        if not player or not self._repository:
+            return
+
+        stored_volume, stored_muted = self._repository.get_sendspin_client_state(client.client_id)
+        if stored_volume is not None or stored_muted is not None:
+            if stored_volume is not None:
+                self._set_player_volume(player, stored_volume)
+            if stored_muted is not None:
+                self._set_player_muted(player, stored_muted)
+            self._persist_client_state(client, volume=stored_volume, muted=stored_muted)
+            return
+
+        reported_volume = getattr(player, "volume", None)
+        reported_muted = getattr(player, "muted", None)
+        if reported_volume is not None or reported_muted is not None:
+            self._persist_client_state(
+                client,
+                volume=reported_volume,
+                muted=reported_muted,
+            )
+            return
+
+        target_volume = DEFAULT_SENDSPIN_CLIENT_VOLUME
+        self._set_player_volume(player, target_volume)
+        self._persist_client_state(client, volume=target_volume, muted=None)
+
+    def _persist_client_state(
+        self,
+        client: SendspinClient,
+        *,
+        volume: int | None = None,
+        muted: bool | None = None,
+    ) -> None:
+        if not self._repository:
+            return
+        player = self._first_player_role(client)
+        if player:
+            if volume is None:
+                volume = getattr(player, "volume", None)
+            if muted is None:
+                muted = getattr(player, "muted", None)
+        try:
+            self._repository.upsert_sendspin_client_state(
+                client.client_id,
+                name=client.name,
+                volume=volume,
+                muted=muted,
+            )
+        except Exception:
+            logger.debug("Failed persisting SendSpin client state: %s", client.client_id, exc_info=True)
+
+    def _persist_connected_client_states(self) -> None:
+        if not self._server:
+            return
+        for client in self._server.connected_clients:
+            self._persist_client_state(client)
 
     def _sync_controller_state(self, ctrl: ControllerGroupRole) -> None:
         engine = self._stream_engine
@@ -765,6 +837,7 @@ class SendspinServerService:
         if not player_roles:
             return False
         self._set_player_volume(player_roles[0], volume)
+        self._persist_client_state(client, volume=player_roles[0].volume)
         self._notify_clients_changed()
         return True
 
@@ -778,6 +851,7 @@ class SendspinServerService:
         if not player_roles:
             return False
         self._set_player_muted(player_roles[0], muted)
+        self._persist_client_state(client, muted=player_roles[0].muted)
         self._notify_clients_changed()
         return True
 
@@ -791,6 +865,7 @@ class SendspinServerService:
         new_volumes = self._redistribute_volume(players, target)
         for player, vol in new_volumes.items():
             self._set_player_volume(player, vol)
+        self._persist_connected_client_states()
         self._notify_clients_changed()
         return True
 
@@ -800,6 +875,7 @@ class SendspinServerService:
         players = self._get_group_players()
         for player in players:
             self._set_player_muted(player, muted)
+        self._persist_connected_client_states()
         self._notify_clients_changed()
         return True
 
