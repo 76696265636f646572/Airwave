@@ -256,9 +256,13 @@ class StreamEngine:
                         source_url=previous.source_url,
                         provider=getattr(previous, "provider", None),
                         provider_item_id=getattr(previous, "provider_item_id", None),
-                        normalized_url=previous.source_url,
-                        source_type=getattr(previous, "provider", None) or "unknown",
-                        title=previous.title,
+                        normalized_url=getattr(previous, "normalized_url", None)
+                        or previous.source_url,
+                        source_type=getattr(previous, "source_type", None) or "unknown",
+                        title=getattr(previous, "title", None) or previous.source_url,
+                        channel=getattr(previous, "channel", None),
+                        duration_seconds=getattr(previous, "duration_seconds", None),
+                        thumbnail_url=getattr(previous, "thumbnail_url", None),
                     )
                 ]
             )
@@ -363,9 +367,12 @@ class StreamEngine:
                     source_url=previous.source_url,
                     provider=getattr(previous, "provider", None),
                     provider_item_id=getattr(previous, "provider_item_id", None),
-                    normalized_url=previous.source_url,
-                    source_type=getattr(previous, "provider", None) or "unknown",
+                    normalized_url=getattr(previous, "normalized_url", None) or previous.source_url,
+                    source_type=getattr(previous, "source_type", None) or "unknown",
                     title=previous.title,
+                    channel=getattr(previous, "channel", None),
+                    duration_seconds=getattr(previous, "duration_seconds", None),
+                    thumbnail_url=getattr(previous, "thumbnail_url", None),
                 )
             ]
         )
