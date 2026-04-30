@@ -1264,7 +1264,18 @@ class StreamEngine:
             logger.exception("Failed updating playback state after stop")
 
     def _stream_paused_cycle(self) -> None:
-        while not self._stop_event.is_set() and self.state.paused:
+        while not self._stop_event.is_set():
+            if self._skip_event.is_set():
+                reason = self._consume_interrupt_reason()
+                if reason == "pause":
+                    if not self.state.paused:
+                        return
+                elif reason == "resume":
+                    return
+                else:
+                    raise InterruptedError(reason)
+            if not self.state.paused:
+                return
             try:
                 process = self.ffmpeg_pipeline.spawn_silence()
             except FfmpegError as exc:
@@ -1273,14 +1284,18 @@ class StreamEngine:
                 continue
             self._set_active_processes(process)
             try:
-                while not self._stop_event.is_set() and self.state.paused:
+                while not self._stop_event.is_set():
                     if self._skip_event.is_set():
                         reason = self._consume_interrupt_reason()
                         if reason == "pause":
+                            if not self.state.paused:
+                                return
                             continue
                         if reason == "resume":
                             return
                         raise InterruptedError(reason)
+                    if not self.state.paused:
+                        return
                     chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
                     if not chunk:
                         break

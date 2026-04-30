@@ -298,6 +298,33 @@ def test_paused_cycle_publishes_silence_until_resume(tmp_path):
     assert all(chunk == b"\x00" * 8 for chunk in published)
 
 
+def test_paused_cycle_consumes_resume_interrupt_when_toggle_pause_clears_paused_flag(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/resume-toggle.db")
+    repo.init_db()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        queue_poll_seconds=0.01,
+    )
+    engine.state.mode = PlaybackMode.playing
+    engine.state.paused = True
+    engine.state.started_at_monotonic_seconds = 100.0
+    engine.state.paused_elapsed_seconds = 12.0
+
+    def _resume_soon():
+        import time
+
+        time.sleep(0.03)
+        assert engine.toggle_pause() is False
+
+    Thread(target=_resume_soon, daemon=True).start()
+    engine._stream_paused_cycle()  # noqa: SLF001 - regression coverage
+
+    assert engine.state.paused is False
+    assert engine._skip_event.is_set() is False  # noqa: SLF001
+
+
 def test_playback_bridges_silence_before_first_track_chunk(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/transition-silence.db")
     repo.init_db()
