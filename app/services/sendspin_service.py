@@ -454,13 +454,17 @@ class SendspinServerService:
             self._silence_process = proc
         return proc
 
-    def _push_silence_chunk(self) -> None:
+    def _push_silence_chunk(self) -> bool:
         proc = self._ensure_silence_process()
         if not proc or not proc.stdout:
-            return
+            return False
+
         chunk = proc.stdout.read(PCM_CHUNK_BYTES)
         if chunk:
             self._push_pcm_chunk(chunk)
+            return True
+
+        return False
 
     def _audio_feed_loop(self) -> None:
         """Background thread that reads PCM from ffmpeg and pushes to SendSpin."""
