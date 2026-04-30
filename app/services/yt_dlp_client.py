@@ -167,6 +167,7 @@ class YtDlpClient:
             "bestaudio/best",
             "--no-progress",
             "--quiet",
+            "--no-part",
             "--force-overwrites",
             "-o",
             output_path,
