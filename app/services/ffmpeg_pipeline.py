@@ -4,7 +4,9 @@ import json
 import re
 import subprocess
 from typing import IO
+import logging
 
+logger = logging.getLogger(__name__)
 
 class FfmpegError(RuntimeError):
     pass
@@ -258,6 +260,7 @@ class FfmpegPipeline:
                 "pipe:1",
             ]
         )
+        logger.debug("Spawning audio source: %s", args)
         return self._spawn(args)
 
     def spawn_pcm_for_source(
@@ -288,6 +291,7 @@ class FfmpegPipeline:
                 "pipe:1",
             ]
         )
+        logger.debug("Spawning PCM source: %s", args)
         return self._spawn(args)
 
     def spawn_pcm_silence(
