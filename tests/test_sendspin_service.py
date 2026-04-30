@@ -224,13 +224,13 @@ def test_reconcile_connected_client_state_uses_default_when_no_state():
 
     svc._reconcile_connected_client_state(client)  # noqa: SLF001
 
-    assert player.volume == 50
-    assert player._volume_commands == [50]
+    assert player.volume == 100
+    assert player._volume_commands == [100]
     assert player._mute_commands == []
     repo.upsert_sendspin_client_state.assert_called_once_with(
         "c1",
         name="Kitchen",
-        volume=50,
+        volume=100,
         muted=None,
     )
 
