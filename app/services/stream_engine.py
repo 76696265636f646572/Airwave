@@ -433,26 +433,35 @@ class StreamEngine:
         except OSError:
             return
 
-    def _prefetch_audio_for_item(self, queue_item_id: int, source_url: str) -> None:
+    def _prefetch_audio_for_item(
+        self,
+        queue_item_id: int,
+        source_url: str,
+        *,
+        register_active: bool = False,
+    ) -> None:
         if self._get_prefetched_audio_path(queue_item_id) is not None:
             logger.debug("Prefetch skip item %s (already cached)", queue_item_id)
             return
-        source_process = self.yt_dlp_service.spawn_audio_stream(source_url)
         temp_path = os.path.join(self._prefetched_audio_dir, f"{queue_item_id}.bin")
         logger.debug("Prefetching audio for item %s from %s to %s", queue_item_id, source_url, temp_path)
+        source_process = self.yt_dlp_service.spawn_audio_download(source_url, temp_path)
+        if register_active:
+            self._set_active_processes(None, source_process)
         try:
-            with open(temp_path, "wb") as destination:
-                while True:
-                    chunk = source_process.stdout.read(64 * 1024) if source_process.stdout is not None else b""
-                    if not chunk:
-                        break
-                    destination.write(chunk)
+            while True:
+                if register_active and (self._stop_event.is_set() or self._skip_event.is_set()):
+                    raise InterruptedError(self._consume_interrupt_reason("stop"))
+                return_code = self._process_return_code(source_process)
+                if return_code is not None:
+                    break
+                time.sleep(0.05)
+            stderr_pipe = getattr(source_process, "stderr", None)
             stderr_text = (
-                source_process.stderr.read().decode("utf-8", errors="replace").strip()
-                if source_process.stderr is not None
+                stderr_pipe.read().decode("utf-8", errors="replace").strip()
+                if stderr_pipe is not None
                 else ""
             )
-            return_code = self._process_return_code(source_process)
             if return_code != 0:
                 raise YtDlpError(stderr_text or f"yt-dlp exited with status {return_code}")
             if not os.path.exists(temp_path) or os.path.getsize(temp_path) <= 0:
@@ -465,6 +474,8 @@ class StreamEngine:
             raise
         finally:
             self._terminate_process(source_process)
+            if register_active:
+                self._set_active_processes(None, None)
 
     def _remember_recent_resolved_track(self, resolved: ResolvedTrack) -> None:
         key = resolved.normalized_url
@@ -950,25 +961,34 @@ class StreamEngine:
                         self._set_playback_offset_seconds(seek_offset)
                         start_offset_seconds = seek_offset
 
-                        prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
                         spawn_for_source = getattr(self.ffmpeg_pipeline, "spawn_for_source", None)
+                        prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
+                        if (
+                            callable(spawn_for_source)
+                            and not prefetched_audio_path
+                            and not resolved.is_live
+                            and not self._item_uses_direct_ffmpeg(queue_item)
+                        ):
+                            self._prefetch_audio_for_item(
+                                queue_item.id,
+                                queue_item.source_url,
+                                register_active=True,
+                            )
+                            if self._skip_event.is_set():
+                                raise InterruptedError(self._consume_interrupt_reason())
+                            prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
                         if callable(spawn_for_source) and prefetched_audio_path:
                             source_process = None
                             process = spawn_for_source(prefetched_audio_path, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
                         elif callable(spawn_for_source) and (
-                            seek_offset > 0 or self._item_uses_direct_ffmpeg(queue_item)
+                            seek_offset > 0 or resolved.is_live or self._item_uses_direct_ffmpeg(queue_item)
                         ):
                             source_process = None
                             process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
                         else:
-                            source_process = self.yt_dlp_service.spawn_audio_stream(queue_item.source_url)
-                            self._set_active_processes(None, source_process)
-                            process = self.ffmpeg_pipeline.spawn_for_stdin(source_process.stdout)
-                            if source_process.stdout is not None:
-                                source_process.stdout.close()
-                            self._set_active_processes(process, source_process)
+                            raise FfmpegError("ffmpeg source playback is unavailable")
 
                         # Trigger upcoming prefetch as soon as playback pipeline is ready.
                         # Relying only on the first emitted chunk can miss/delay prefetch

@@ -154,7 +154,12 @@ class YtDlpClient:
     def get_playlist_json(self, url: str, cookie_file: str | None = None) -> dict[str, Any]:
         return self._run_json("--flat-playlist", "--skip-download", "-J", url, cookie_file=cookie_file)
 
-    def spawn_audio_stream(self, url: str, cookie_file: str | None = None) -> subprocess.Popen[bytes]:
+    def spawn_audio_download(
+        self,
+        url: str,
+        output_path: str,
+        cookie_file: str | None = None,
+    ) -> subprocess.Popen[bytes]:
         cmd = [
             *self._build_base_cmd(cookie_file=cookie_file),
             "--no-playlist",
@@ -162,15 +167,16 @@ class YtDlpClient:
             "bestaudio/best",
             "--no-progress",
             "--quiet",
+            "--force-overwrites",
             "-o",
-            "-",
+            output_path,
             url,
         ]
         try:
             return subprocess.Popen(
                 cmd,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
             )
         except FileNotFoundError as exc:

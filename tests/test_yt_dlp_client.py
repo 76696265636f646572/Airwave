@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 from app.services.yt_dlp_client import YtDlpClient
 
 
@@ -96,3 +98,32 @@ def test_search_json_passes_cookies_flag_for_soundcloud(monkeypatch):
     assert payload["entries"] == []
     assert "--cookies" in captured["cmd"]
     assert "/tmp/soundcloud.cookies" in captured["cmd"]
+
+
+def test_spawn_audio_download_writes_to_file_not_stdout(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakePopen:
+        def __init__(self, cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+            self.stderr = None
+
+    monkeypatch.setattr("app.services.yt_dlp_client.subprocess.Popen", FakePopen)
+
+    client = _client()
+    client.spawn_audio_download(
+        "https://www.youtube.com/watch?v=abc",
+        "/tmp/audio.bin",
+        cookie_file="/tmp/youtube.cookies",
+    )
+
+    cmd = captured["cmd"]
+    kwargs = captured["kwargs"]
+    assert isinstance(cmd, list)
+    assert isinstance(kwargs, dict)
+    assert "-o" in cmd
+    assert "/tmp/audio.bin" in cmd
+    assert "-" not in cmd[cmd.index("-o") + 1]
+    assert kwargs["stdout"] == subprocess.DEVNULL
+    assert kwargs["stderr"] == subprocess.PIPE

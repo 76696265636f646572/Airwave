@@ -260,26 +260,6 @@ class FfmpegPipeline:
         )
         return self._spawn(args)
 
-    def spawn_for_stdin(self, stdin: IO[bytes] | None) -> subprocess.Popen[bytes]:
-        args = [
-            "-re",
-            "-i",
-            "pipe:0",
-            "-vn",
-            "-acodec",
-            "libmp3lame",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-b:a",
-            self.bitrate,
-            "-f",
-            "mp3",
-            "pipe:1",
-        ]
-        return self._spawn(args, stdin=stdin)
-
     def spawn_pcm_for_source(
         self,
         source_url: str,
@@ -309,31 +289,6 @@ class FfmpegPipeline:
             ]
         )
         return self._spawn(args)
-
-    def spawn_pcm_for_stdin(
-        self,
-        stdin: IO[bytes] | None,
-        sample_rate: int = 48000,
-        channels: int = 2,
-        bit_depth: int = 16,
-    ) -> subprocess.Popen[bytes]:
-        fmt = f"s{bit_depth}le"
-        args = [
-            "-re",
-            "-i",
-            "pipe:0",
-            "-vn",
-            "-acodec",
-            f"pcm_{fmt}",
-            "-ar",
-            str(sample_rate),
-            "-ac",
-            str(channels),
-            "-f",
-            fmt,
-            "pipe:1",
-        ]
-        return self._spawn(args, stdin=stdin)
 
     def spawn_pcm_silence(
         self,
