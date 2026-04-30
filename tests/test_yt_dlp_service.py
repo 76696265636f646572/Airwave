@@ -50,7 +50,7 @@ def test_is_playlist_url_start_radio(service):
 class _CaptureClient:
     resolved_values: list[tuple[str, str | None]] = field(default_factory=list)
     single_calls: list[tuple[str, str | None]] = field(default_factory=list)
-    spawn_calls: list[tuple[str, str | None]] = field(default_factory=list)
+    spawn_calls: list[tuple[str, str, str | None]] = field(default_factory=list)
     search_calls: list[tuple[str, str, int, str | None]] = field(default_factory=list)
     playlist_calls: list[tuple[str, str | None]] = field(default_factory=list)
 
