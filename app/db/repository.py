@@ -93,7 +93,7 @@ class Repository:
                 row.volume = volume
             if muted is not None:
                 row.muted = bool(muted)
-
+            row.updated_at = datetime.now(timezone.utc)
     def prune_sendspin_clients(self, days: int = 30) -> int:
         if self.engine.url.get_backend_name() != "sqlite":
             return 0
