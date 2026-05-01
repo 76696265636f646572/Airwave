@@ -519,6 +519,33 @@ def test_push_state_update_sets_group_stopped_when_engine_idle():
     assert svc._group.state == PlaybackStateType.STOPPED  # noqa: SLF001
 
 
+def test_push_state_update_emits_metadata_on_track_change_without_clear():
+    svc = _make_service()
+    metadata = MagicMock()
+    svc._server = FakeServer()  # noqa: SLF001
+    svc._group = FakeGroup(_roles={"metadata": metadata})  # noqa: SLF001
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 2
+    st.now_playing_title = "New Track"
+    st.now_playing_channel = "New Artist"
+    st.now_playing_duration_seconds = 123
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+
+    svc.push_state_update()
+
+    assert len(clears) == 0
+    assert svc._last_push_snapshot_for_clear == (2, PlaybackMode.playing, False)
+    metadata.update.assert_called_once()
+    assert metadata.update.call_args.kwargs["title"] == "New Track"
+    assert metadata.update.call_args.kwargs["artist"] == "New Artist"
+    assert metadata.update.call_args.kwargs["track_duration"] == 123000
+
+
 # ---------------------------------------------------------------------------
 # Controller event handling
 # ---------------------------------------------------------------------------
@@ -711,7 +738,7 @@ def test_snapshot_clear_emits_on_pause():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
     st.paused = True
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 1
@@ -725,7 +752,7 @@ def test_snapshot_clear_emits_on_stop():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
     st.mode = PlaybackMode.idle
     st.now_playing_id = None
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
@@ -740,10 +767,11 @@ def test_snapshot_clear_skips_track_change():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
     st.now_playing_id = 2
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 0
+    assert svc._last_push_snapshot_for_clear == (2, PlaybackMode.playing, False)
 
 
 def test_audio_feed_cycle_skips_clear_when_track_changes():
@@ -782,7 +810,7 @@ def test_snapshot_clear_skips_first_transition():
     svc._last_push_snapshot_for_clear = None
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 0
-    assert svc._last_push_snapshot_for_clear == (PlaybackMode.playing, False)
+    assert svc._last_push_snapshot_for_clear == (1, PlaybackMode.playing, False)
 
 
 # ---------------------------------------------------------------------------

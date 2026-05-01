@@ -141,8 +141,9 @@ class SendspinServerService:
         self._sendspin_pcm_track_id: int | None = None
         self._sendspin_pcm_anchor_monotonic: float | None = None
 
-        # Previous snapshot for push_state_update (pause / stop -> stream/clear)
-        self._last_push_snapshot_for_clear: tuple[PlaybackMode, bool] | None = None
+        # Previous playback snapshot for push_state_update. Track changes should
+        # still update Sendspin metadata/state, but only pause/stop emits clear.
+        self._last_push_snapshot_for_clear: tuple[int | None, PlaybackMode, bool] | None = None
 
     @property
     def server(self) -> SendspinServer | None:
@@ -571,12 +572,13 @@ class SendspinServerService:
         prev = self._last_push_snapshot_for_clear
         need_clear = False
         if prev is not None:
-            prev_mode, prev_paused = prev
+            _prev_track, prev_mode, prev_paused = prev
             if state.paused and not prev_paused:
                 need_clear = True
             elif state.mode == PlaybackMode.idle and prev_mode != PlaybackMode.idle:
                 need_clear = True
         self._last_push_snapshot_for_clear = (
+            state.now_playing_id,
             state.mode,
             state.paused,
         )
