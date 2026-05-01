@@ -651,8 +651,11 @@ class SendspinServerService:
 
         tracking_track_id = state.now_playing_id
         spawn_anchor = state.started_at_monotonic_seconds
+        chunks_sent = 0
         try:
-            self._stream_pcm_from_process(process, tracking_track_id, spawn_anchor)
+            chunks_sent = self._stream_pcm_from_process(
+                process, tracking_track_id, spawn_anchor
+            )
         finally:
             with self._process_lock:
                 self._active_process = None
@@ -661,6 +664,10 @@ class SendspinServerService:
                 process.wait(timeout=1)
             except Exception:
                 pass
+        # Track changes (and ffmpeg startup races) can exit before any PCM is read;
+        # avoid a tight respawn loop that spams logs and pegs CPU.
+        if chunks_sent == 0:
+            time.sleep(0.05)
 
     def _feed_silence_until_state_change(self) -> None:
         engine = self._stream_engine
@@ -685,8 +692,9 @@ class SendspinServerService:
         process: subprocess.Popen[bytes],
         tracking_track_id: int | None,
         spawn_anchor_monotonic: float | None,
-    ) -> None:
+    ) -> int:
         engine = self._stream_engine
+        chunks_sent = 0
 
         while not self._audio_stop_event.is_set():
             state = engine.state
@@ -718,6 +726,9 @@ class SendspinServerService:
                 break
 
             self._push_pcm_chunk(chunk)
+            chunks_sent += 1
+
+        return chunks_sent
 
     def _push_pcm_chunk(self, pcm: bytes) -> None:
         if not self._server or not self._group:
