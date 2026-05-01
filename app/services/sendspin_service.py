@@ -141,8 +141,8 @@ class SendspinServerService:
         self._sendspin_pcm_track_id: int | None = None
         self._sendspin_pcm_anchor_monotonic: float | None = None
 
-        # Previous snapshot for push_state_update (pause / stop / track change → stream/clear)
-        self._last_push_snapshot_for_clear: tuple[int | None, PlaybackMode, bool] | None = None
+        # Previous snapshot for push_state_update (pause / stop -> stream/clear)
+        self._last_push_snapshot_for_clear: tuple[PlaybackMode, bool] | None = None
 
     @property
     def server(self) -> SendspinServer | None:
@@ -566,20 +566,17 @@ class SendspinServerService:
             pass
 
     def _maybe_clear_push_stream_for_playback_snapshot_change(self) -> None:
-        """Emit stream/clear on pause, stop, next, or previous (same as spec seek boundaries)."""
+        """Emit stream/clear on pause or stop."""
         state = self._stream_engine.state
         prev = self._last_push_snapshot_for_clear
         need_clear = False
         if prev is not None:
-            prev_track, prev_mode, prev_paused = prev
+            prev_mode, prev_paused = prev
             if state.paused and not prev_paused:
                 need_clear = True
             elif state.mode == PlaybackMode.idle and prev_mode != PlaybackMode.idle:
                 need_clear = True
-            elif prev_track is not None and state.now_playing_id != prev_track:
-                need_clear = True
         self._last_push_snapshot_for_clear = (
-            state.now_playing_id,
             state.mode,
             state.paused,
         )
@@ -623,13 +620,6 @@ class SendspinServerService:
                 self._reset_sendspin_pcm_session()
             self._feed_silence_until_state_change()
             return
-
-        # Track change: clear before decoding the next item.
-        if (
-            self._sendspin_pcm_track_id is not None
-            and state.now_playing_id != self._sendspin_pcm_track_id
-        ):
-            self._clear_push_stream_sync()
 
         self._maybe_clear_push_stream_for_timeline_jump(state)
 

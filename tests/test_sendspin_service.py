@@ -700,7 +700,7 @@ def test_stream_pcm_from_process_breaks_when_timeline_anchor_changes():
 
 
 # ---------------------------------------------------------------------------
-# Playback snapshot → stream/clear (pause / stop / next / previous)
+# Playback snapshot -> stream/clear (pause / stop)
 # ---------------------------------------------------------------------------
 
 def test_snapshot_clear_emits_on_pause():
@@ -711,7 +711,7 @@ def test_snapshot_clear_emits_on_pause():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
     st.paused = True
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 1
@@ -725,14 +725,14 @@ def test_snapshot_clear_emits_on_stop():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
     st.mode = PlaybackMode.idle
     st.now_playing_id = None
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 1
 
 
-def test_snapshot_clear_emits_on_track_change():
+def test_snapshot_clear_skips_track_change():
     svc = _make_service()
     clears: list[int] = []
     svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
@@ -740,10 +740,35 @@ def test_snapshot_clear_emits_on_track_change():
     st.mode = PlaybackMode.playing
     st.paused = False
     st.now_playing_id = 1
-    svc._last_push_snapshot_for_clear = (1, PlaybackMode.playing, False)
+    svc._last_push_snapshot_for_clear = (PlaybackMode.playing, False)
     st.now_playing_id = 2
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
-    assert len(clears) == 1
+    assert len(clears) == 0
+
+
+def test_audio_feed_cycle_skips_clear_when_track_changes():
+    svc = _make_service()
+    clears: list[int] = []
+    svc._clear_push_stream_sync = lambda: clears.append(1)  # noqa: SLF001
+    svc._get_pcm_ffmpeg_input = MagicMock(return_value="track-2.mp3")  # noqa: SLF001
+    svc._stream_pcm_from_process = MagicMock()  # noqa: SLF001
+
+    st = svc._stream_engine.state
+    st.mode = PlaybackMode.playing
+    st.paused = False
+    st.now_playing_id = 2
+    st.started_at_monotonic_seconds = 200.0
+    svc._sendspin_pcm_track_id = 1
+    svc._sendspin_pcm_anchor_monotonic = 100.0
+
+    process = MagicMock()
+    svc._ffmpeg_pipeline.spawn_pcm_for_source.return_value = process
+
+    svc._audio_feed_cycle()
+
+    assert len(clears) == 0
+    svc._ffmpeg_pipeline.spawn_pcm_for_source.assert_called_once()
+    assert svc._sendspin_pcm_track_id == 2
 
 
 def test_snapshot_clear_skips_first_transition():
@@ -757,7 +782,7 @@ def test_snapshot_clear_skips_first_transition():
     svc._last_push_snapshot_for_clear = None
     svc._maybe_clear_push_stream_for_playback_snapshot_change()
     assert len(clears) == 0
-    assert svc._last_push_snapshot_for_clear == (1, PlaybackMode.playing, False)
+    assert svc._last_push_snapshot_for_clear == (PlaybackMode.playing, False)
 
 
 # ---------------------------------------------------------------------------
