@@ -43,6 +43,35 @@ function subscribeSnapshot() {
   });
 }
 
+function previewNextQueuedTrack() {
+  const nextItem = queue.value.find((item) => item?.status === "queued");
+  if (!nextItem) return null;
+
+  const { playbackState, applyPlaybackState } = usePlaybackState();
+  const previousState = playbackState.value;
+  const durationSeconds = nextItem.duration_seconds ?? null;
+  const now = Date.now() / 1000;
+
+  applyPlaybackState({
+    ...previousState,
+    mode: "playing",
+    paused: false,
+    can_seek: Boolean(durationSeconds && durationSeconds > 0),
+    now_playing_id: nextItem.id,
+    now_playing_title: nextItem.title || nextItem.source_url || "Loading track",
+    now_playing_channel: nextItem.channel ?? null,
+    now_playing_thumbnail_url: nextItem.thumbnail_url ?? null,
+    now_playing_is_live: false,
+    now_playing_is_liked: false,
+    duration_seconds: durationSeconds,
+    started_at: now,
+    elapsed_seconds: 0,
+    progress_percent: durationSeconds && durationSeconds > 0 ? 0 : null,
+  });
+
+  return previousState;
+}
+
 export function useLibraryState() {
   const { notifySuccess, notifyError } = useNotifications();
 
@@ -426,10 +455,15 @@ export function useLibraryState() {
   }
 
   async function skipCurrent() {
+    const previousState = previewNextQueuedTrack();
     if (sendSpinCommand("next")) return;
     try {
       await fetchJson("/api/queue/skip", { method: "POST" });
     } catch (error) {
+      if (previousState) {
+        const { applyPlaybackState } = usePlaybackState();
+        applyPlaybackState(previousState);
+      }
       notifyError("Could not skip", error);
     }
   }

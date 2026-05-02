@@ -140,6 +140,40 @@ def test_stream_engine_playback_lifecycle(tmp_path):
     assert finished.status in (QueueStatus.completed, QueueStatus.skipped)
 
 
+def test_stream_engine_notifies_before_first_audio_chunk(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/notify-before-audio.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [NewQueueItem(source_url="u", normalized_url="u", source_type="video", title="Song")]
+    )
+    item = repo.dequeue_next()
+    assert item is not None
+
+    events: list[str] = []
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        chunk_size=2,
+        queue_poll_seconds=0.1,
+        on_state_change=lambda: events.append("notify"),
+    )
+    engine._start_transition_silence = lambda: (None, None)  # type: ignore[method-assign]  # noqa: SLF001
+    original_publish = engine.hub.publish
+
+    def _record_publish(chunk: bytes) -> None:
+        events.append("publish")
+        original_publish(chunk)
+
+    engine.hub.publish = _record_publish  # type: ignore[method-assign]
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - regression coverage for UI/audio ordering
+
+    assert "notify" in events
+    assert "publish" in events
+    assert events.index("notify") < events.index("publish")
+
+
 def test_stream_engine_prefetches_upcoming_tracks_before_current_track_finishes(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/prefetch.db")
     repo.init_db()

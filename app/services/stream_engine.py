@@ -1001,6 +1001,8 @@ class StreamEngine:
                         # Relying only on the first emitted chunk can miss/delay prefetch
                         # for some direct/local playback paths.
                         self._trigger_prefetch_upcoming_tracks()
+                        self._notify_state_changed()
+                        logger.info("Notifying state changed before first streamed chunk")
 
                         attempt_chunks_sent = 0
                         attempt_bytes_sent = 0
@@ -1047,11 +1049,6 @@ class StreamEngine:
                             attempt_chunks_sent += 1
                             if attempt_chunks_sent == 1:
                                 self._trigger_prefetch_upcoming_tracks()
-                                self._notify_state_changed()
-                                logger.info(
-                                    "Notifying state changed (attempt_chunks_sent=%s)",
-                                    attempt_chunks_sent,
-                                )
                             attempt_bytes_sent += len(chunk)
                             total_chunks_sent += 1
                             total_bytes_sent += len(chunk)
