@@ -25,10 +25,6 @@ class FakeProc:
 
 
 class FakeFfmpeg:
-    def spawn_for_stdin(self, stdin) -> FakeProc:
-        _ = stdin
-        return FakeProc(b"abc123")
-
     def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
         _ = source_url, start_at_seconds
         return FakeProc(b"abc123")
@@ -47,8 +43,8 @@ class FakeFfmpeg:
 
 
 class TruncatedFfmpeg(FakeFfmpeg):
-    def spawn_for_stdin(self, stdin) -> FakeProc:
-        _ = stdin
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
+        _ = source_url, start_at_seconds
         return FakeProc(
             b"abc123",
             returncode=0,
@@ -60,10 +56,12 @@ class FakeYtDlp:
     def __init__(self) -> None:
         self.spawn_calls = 0
 
-    def spawn_audio_stream(self, url: str) -> FakeProc:
+    def spawn_audio_download(self, url: str, output_path: str) -> FakeProc:
         _ = url
         self.spawn_calls += 1
-        return FakeProc(b"src")
+        with open(output_path, "wb") as handle:
+            handle.write(b"src")
+        return FakeProc(b"")
 
     def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
         _ = force_refresh
@@ -140,6 +138,40 @@ def test_stream_engine_playback_lifecycle(tmp_path):
     finished = repo.get_item(created[0].id)
     assert finished is not None
     assert finished.status in (QueueStatus.completed, QueueStatus.skipped)
+
+
+def test_stream_engine_notifies_before_first_audio_chunk(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/notify-before-audio.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [NewQueueItem(source_url="u", normalized_url="u", source_type="video", title="Song")]
+    )
+    item = repo.dequeue_next()
+    assert item is not None
+
+    events: list[str] = []
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        chunk_size=2,
+        queue_poll_seconds=0.1,
+        on_state_change=lambda: events.append("notify"),
+    )
+    engine._start_transition_silence = lambda: (None, None)  # type: ignore[method-assign]  # noqa: SLF001
+    original_publish = engine.hub.publish
+
+    def _record_publish(chunk: bytes) -> None:
+        events.append("publish")
+        original_publish(chunk)
+
+    engine.hub.publish = _record_publish  # type: ignore[method-assign]
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - regression coverage for UI/audio ordering
+
+    assert "notify" in events
+    assert "publish" in events
+    assert events.index("notify") < events.index("publish")
 
 
 def test_stream_engine_prefetches_upcoming_tracks_before_current_track_finishes(tmp_path):
@@ -298,6 +330,33 @@ def test_paused_cycle_publishes_silence_until_resume(tmp_path):
     assert all(chunk == b"\x00" * 8 for chunk in published)
 
 
+def test_paused_cycle_consumes_resume_interrupt_when_toggle_pause_clears_paused_flag(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/resume-toggle.db")
+    repo.init_db()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        queue_poll_seconds=0.01,
+    )
+    engine.state.mode = PlaybackMode.playing
+    engine.state.paused = True
+    engine.state.started_at_monotonic_seconds = 100.0
+    engine.state.paused_elapsed_seconds = 12.0
+
+    def _resume_soon():
+        import time
+
+        time.sleep(0.03)
+        assert engine.toggle_pause() is False
+
+    Thread(target=_resume_soon, daemon=True).start()
+    engine._stream_paused_cycle()  # noqa: SLF001 - regression coverage
+
+    assert engine.state.paused is False
+    assert engine._skip_event.is_set() is False  # noqa: SLF001
+
+
 def test_playback_bridges_silence_before_first_track_chunk(tmp_path):
     repo = Repository(f"sqlite+pysqlite:///{tmp_path}/transition-silence.db")
     repo.init_db()
@@ -308,11 +367,11 @@ def test_playback_bridges_silence_before_first_track_chunk(tmp_path):
     assert dequeued is not None
 
     class SlowStartYtDlp(FakeYtDlp):
-        def spawn_audio_stream(self, url: str) -> FakeProc:
+        def spawn_audio_download(self, url: str, output_path: str) -> FakeProc:
             import time
 
             time.sleep(0.03)
-            return super().spawn_audio_stream(url)
+            return super().spawn_audio_download(url, output_path)
 
     engine = StreamEngine(
         repository=repo,
@@ -494,12 +553,13 @@ def test_retry_resolves_fresh_metadata_after_failed_attempt(tmp_path):
         playback_retry_count=1,
     )
 
-    engine._set_pending_seek_seconds(10.0)  # noqa: SLF001 - force spawn_for_source path
+    engine._set_pending_seek_seconds(10.0)  # noqa: SLF001 - retry behavior coverage
     engine._play_item(created[0].id)  # noqa: SLF001 - retry behavior coverage
 
     assert yt.resolve_calls == 2
     assert yt.force_refresh_values == [False, True]
-    assert ffmpeg.urls == ["http://media.local/audio/1", "http://media.local/audio/2"]
+    assert len(ffmpeg.urls) == 2
+    assert all(url.endswith(f"/{created[0].id}.bin") for url in ffmpeg.urls)
     finished = repo.get_item(created[0].id)
     assert finished is not None
     assert finished.status == QueueStatus.completed
@@ -514,6 +574,7 @@ def test_runtime_stats_reports_cache_sizes(tmp_path):
         ffmpeg_pipeline=FakeFfmpeg(),
         queue_poll_seconds=0.01,
     )
+    engine.hub.subscriber_count = lambda: 3  # type: ignore[method-assign]
 
     first = ResolvedTrack(
         source_url="u1",
@@ -543,6 +604,28 @@ def test_runtime_stats_reports_cache_sizes(tmp_path):
     assert stats["cached_track_count"] == 2
     assert stats["recent_cache_count"] == 1
     assert stats["prefetched_audio_count"] == 0
+    assert stats["mp3_stream_listeners"] == 3
+    assert stats["pcm_stream_listeners"] == 0
+    assert stats["total_listeners"] == 3
+
+
+def test_runtime_stats_include_pcm_listener_provider(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/pcm-listeners.db")
+    repo.init_db()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        queue_poll_seconds=0.01,
+        pcm_listener_count_provider=lambda: 2,
+    )
+    engine.hub.subscriber_count = lambda: 1  # type: ignore[method-assign]
+
+    stats = engine.runtime_stats()
+
+    assert stats["mp3_stream_listeners"] == 1
+    assert stats["pcm_stream_listeners"] == 2
+    assert stats["total_listeners"] == 3
 
 
 def test_recent_resolved_cache_prunes_old_entries(tmp_path):
@@ -658,3 +741,121 @@ def test_playback_uses_prefetched_audio_file_when_available(tmp_path):
 
     assert ffmpeg.sources == [str(prefetched_path)]
     assert yt.spawn_calls == 0
+
+
+def test_playback_downloads_unprefetched_audio_file_before_ffmpeg(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/unprefetched-audio-playback.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [NewQueueItem(source_url="u", normalized_url="u", source_type="video", title="Song")]
+    )
+    dequeued = repo.dequeue_next()
+    assert dequeued is not None
+
+    class SourceAwareFfmpeg(FakeFfmpeg):
+        def __init__(self) -> None:
+            self.sources: list[str] = []
+
+        def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
+            _ = start_at_seconds
+            self.sources.append(source_url)
+            return FakeProc(b"abc123")
+
+    yt = FakeYtDlp()
+    ffmpeg = SourceAwareFfmpeg()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=yt,
+        ffmpeg_pipeline=ffmpeg,
+        chunk_size=2,
+        queue_poll_seconds=0.01,
+    )
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - playback path coverage
+
+    assert yt.spawn_calls == 1
+    assert len(ffmpeg.sources) == 1
+    assert ffmpeg.sources[0].endswith(f"/{created[0].id}.bin")
+
+
+def test_live_playback_uses_resolved_stream_url(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/live-playback.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [NewQueueItem(source_url="u", normalized_url="u", source_type="video", title="Live")]
+    )
+    dequeued = repo.dequeue_next()
+    assert dequeued is not None
+
+    class LiveYtDlp(FakeYtDlp):
+        def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
+            resolved = super().resolve_video(url, force_refresh=force_refresh)
+            resolved.is_live = True
+            return resolved
+
+    class CountingFfmpeg(FakeFfmpeg):
+        def __init__(self) -> None:
+            self.sources: list[str] = []
+
+        def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0) -> FakeProc:
+            _ = start_at_seconds
+            self.sources.append(source_url)
+            return FakeProc(b"abc123")
+
+    yt = LiveYtDlp()
+    ffmpeg = CountingFfmpeg()
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=yt,
+        ffmpeg_pipeline=ffmpeg,
+        chunk_size=2,
+        queue_poll_seconds=0.01,
+    )
+
+    engine._play_item(created[0].id)  # noqa: SLF001 - live stream path coverage
+
+    assert yt.spawn_calls == 0
+    assert ffmpeg.sources == ["http://media.local/audio"]
+
+
+def test_get_current_ffmpeg_input_prefers_prefetch_then_stream_url(tmp_path):
+    repo = Repository(f"sqlite+pysqlite:///{tmp_path}/ffmpeg_input.db")
+    repo.init_db()
+    created = repo.enqueue_items(
+        [
+            NewQueueItem(
+                source_url="https://example.com/v",
+                normalized_url="https://example.com/v",
+                source_type="video",
+                title="Song",
+            )
+        ]
+    )[0]
+    engine = StreamEngine(
+        repository=repo,
+        yt_dlp_service=FakeYtDlp(),
+        ffmpeg_pipeline=FakeFfmpeg(),
+        chunk_size=2,
+        queue_poll_seconds=0.1,
+    )
+    pf = tmp_path / "pre.bin"
+    pf.write_bytes(b"x")
+    engine.state.now_playing_id = created.id
+    engine._cache_resolved_track(  # noqa: SLF001
+        created.id,
+        ResolvedTrack(
+            source_url=created.source_url,
+            normalized_url=created.normalized_url or created.source_url,
+            title="t",
+            channel="c",
+            duration_seconds=60,
+            thumbnail_url=None,
+            stream_url="http://media.remote/track",
+        ),
+    )
+    engine._cache_prefetched_audio_path(created.id, str(pf))  # noqa: SLF001
+    assert engine.get_current_stream_url() == "http://media.remote/track"
+    assert engine.get_current_ffmpeg_input() == str(pf)
+
+    engine._drop_prefetched_audio_path(created.id)  # noqa: SLF001
+    assert engine.get_current_ffmpeg_input() == "http://media.remote/track"

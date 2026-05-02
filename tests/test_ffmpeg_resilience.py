@@ -14,8 +14,8 @@ class MissingFfmpegPipeline:
     def spawn_silence(self):
         raise FfmpegError("ffmpeg missing")
 
-    def spawn_for_stdin(self, stdin):
-        _ = stdin
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0):
+        _ = source_url, start_at_seconds
         raise FfmpegError("ffmpeg missing")
 
     @staticmethod
@@ -48,8 +48,8 @@ class SequenceFfmpegPipeline:
     def spawn_silence(self):
         return FakeProc(b"\x00" * 8, returncode=0)
 
-    def spawn_for_stdin(self, stdin):
-        _ = stdin
+    def spawn_for_source(self, source_url: str, start_at_seconds: float = 0.0):
+        _ = source_url, start_at_seconds
         self.spawn_calls += 1
         payload, code = self._attempts.pop(0)
         return FakeProc(payload, returncode=code)
@@ -63,9 +63,11 @@ class FakeYtDlp:
     def __init__(self) -> None:
         self.spawn_urls: list[str] = []
 
-    def spawn_audio_stream(self, url: str) -> FakeProc:
+    def spawn_audio_download(self, url: str, output_path: str) -> FakeProc:
         self.spawn_urls.append(url)
-        return FakeProc(b"source", returncode=0)
+        with open(output_path, "wb") as handle:
+            handle.write(b"source")
+        return FakeProc(b"", returncode=0)
 
     def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
         _ = force_refresh
@@ -84,9 +86,11 @@ class SourceAwareYtDlp:
     def __init__(self) -> None:
         self.spawn_urls: list[str] = []
 
-    def spawn_audio_stream(self, url: str) -> FakeProc:
+    def spawn_audio_download(self, url: str, output_path: str) -> FakeProc:
         self.spawn_urls.append(url)
-        return FakeProc(b"source", returncode=0)
+        with open(output_path, "wb") as handle:
+            handle.write(b"source")
+        return FakeProc(b"", returncode=0)
 
     def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
         _ = force_refresh

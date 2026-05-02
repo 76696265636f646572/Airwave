@@ -50,7 +50,7 @@ def test_is_playlist_url_start_radio(service):
 class _CaptureClient:
     resolved_values: list[tuple[str, str | None]] = field(default_factory=list)
     single_calls: list[tuple[str, str | None]] = field(default_factory=list)
-    spawn_calls: list[tuple[str, str | None]] = field(default_factory=list)
+    spawn_calls: list[tuple[str, str, str | None]] = field(default_factory=list)
     search_calls: list[tuple[str, str, int, str | None]] = field(default_factory=list)
     playlist_calls: list[tuple[str, str | None]] = field(default_factory=list)
 
@@ -103,8 +103,8 @@ class _CaptureClient:
             "url": "https://stream.example/audio.mp3",
         }
 
-    def spawn_audio_stream(self, url: str, cookie_file: str | None = None):
-        self.spawn_calls.append((url, cookie_file))
+    def spawn_audio_download(self, url: str, output_path: str, cookie_file: str | None = None):
+        self.spawn_calls.append((url, output_path, cookie_file))
         return object()
 
     def search_json(
@@ -170,7 +170,7 @@ def test_service_applies_provider_specific_cookies(tmp_path):
 
     service.resolve_video("https://www.youtube.com/watch?v=abc")
     service.resolve_video("https://soundcloud.com/artist/track")
-    service.spawn_audio_stream("https://www.mixcloud.com/user/show/")
+    service.spawn_audio_download("https://www.mixcloud.com/user/show/", "/tmp/mixcloud-audio.bin")
     service.search(query="lofi", providers=["youtube", "soundcloud"], limit=3)
 
     assert ("youtube", "/tmp/youtube-source.txt") in capture_client.resolved_values
@@ -178,7 +178,11 @@ def test_service_applies_provider_specific_cookies(tmp_path):
     assert ("mixcloud", "/tmp/mixcloud-source.txt") in capture_client.resolved_values
     assert ("https://www.youtube.com/watch?v=abc", "/tmp/youtube.cookies") in capture_client.single_calls
     assert ("https://soundcloud.com/artist/track", "/tmp/soundcloud.cookies") in capture_client.single_calls
-    assert ("https://www.mixcloud.com/user/show/", "/tmp/mixcloud.cookies") in capture_client.spawn_calls
+    assert (
+        "https://www.mixcloud.com/user/show/",
+        "/tmp/mixcloud-audio.bin",
+        "/tmp/mixcloud.cookies",
+    ) in capture_client.spawn_calls
     assert ("lofi", "youtube", 3, "/tmp/youtube.cookies") in capture_client.search_calls
     assert ("lofi", "soundcloud", 3, "/tmp/soundcloud.cookies") in capture_client.search_calls
 

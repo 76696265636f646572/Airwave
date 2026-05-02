@@ -192,9 +192,9 @@ class YtDlpService:
             return None
         return self._cookie_file_for_provider(provider)
 
-    def spawn_audio_stream(self, url: str):
+    def spawn_audio_download(self, url: str, output_path: str):
         cookie_file = self._cookie_file_for_url(url)
-        return self.client.spawn_audio_stream(url, cookie_file=cookie_file)
+        return self.client.spawn_audio_download(url, output_path, cookie_file=cookie_file)
 
     def resolve_video(self, url: str, force_refresh: bool = False) -> ResolvedTrack:
         cookie_file = self._cookie_file_for_url(url)

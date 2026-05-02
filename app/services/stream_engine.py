@@ -87,10 +87,18 @@ class SharedMp3Hub:
     def publish(self, data: bytes) -> None:
         with self._lock:
             clients = list(self._clients.values())
+            subscriber_count = len(clients)
         for q in clients:
             try:
                 q.put_nowait(data)
             except queue.Full:
+                logger.warning(
+                    "MP3 hub client queue full: dropped oldest chunk to keep stream live "
+                    "(subscriber_count=%s queue_maxsize=%s chunk_bytes=%s)",
+                    subscriber_count,
+                    self._stream_queue_size,
+                    len(data),
+                )
                 try:
                     q.get_nowait()
                 except queue.Empty:
@@ -98,6 +106,12 @@ class SharedMp3Hub:
                 try:
                     q.put_nowait(data)
                 except queue.Full:
+                    logger.warning(
+                        "MP3 hub client queue still full after drop; skipping chunk for one client "
+                        "(queue_maxsize=%s chunk_bytes=%s)",
+                        self._stream_queue_size,
+                        len(data),
+                    )
                     continue
 
     def clear(self) -> None:
@@ -127,6 +141,7 @@ class StreamEngine:
         playback_retry_count: int = 2,
         stats_log_seconds: float = 15.0,
         on_state_change: Callable[[], None] | None = None,
+        pcm_listener_count_provider: Callable[[], int] | None = None,
     ) -> None:
         self.repository = repository
         self.yt_dlp_service = yt_dlp_service
@@ -154,6 +169,7 @@ class StreamEngine:
         self._tracks_failed = 0
         self._tracks_skipped = 0
         self._on_state_change = on_state_change
+        self._pcm_listener_count_provider = pcm_listener_count_provider
         self._repeat_cycle_items: list[
             tuple[str, str | None, str | None, str, str, str | None, int | None, str | None]
         ] = []
@@ -167,6 +183,7 @@ class StreamEngine:
         self._prefetched_audio_cache: dict[int, str] = {}
         self._prefetched_audio_dir = tempfile.mkdtemp(prefix="airwave-prefetch-")
         self._prefetch_thread: threading.Thread | None = None
+        self._user_stopped = False
 
     def _notify_state_changed(self) -> None:
         if self._on_state_change is None:
@@ -196,6 +213,67 @@ class StreamEngine:
 
     def skip_current(self) -> None:
         self._request_interrupt("skip")
+
+    def stop_playback(self) -> None:
+        """Halt playback without advancing to the next track.
+
+        The currently-playing item is re-enqueued at the front so a
+        subsequent ``resume_playback`` picks it up.  The engine
+        transitions to an idle cycle that stays silent until explicitly
+        resumed.
+        """
+        self._user_stopped = True
+        self._request_interrupt("user_stop")
+
+    def resume_playback(self) -> str:
+        """Resume playback per the SendSpin 'play' command spec.
+
+        * If paused: unpause.
+        * If user-stopped (idle with queue): clear the stop flag and
+          wake the idle cycle so the next queued item starts.
+        * If idle with an empty queue: re-enqueue the last history item
+          and wake the idle cycle (\"resume last media\").
+
+        Returns a short label describing what happened.
+        """
+        if self.state.paused:
+            self.toggle_pause()
+            return "resumed"
+
+        if self._user_stopped:
+            self._user_stopped = False
+            self._request_interrupt("resume_from_stop")
+            return "resumed_from_stop"
+
+        if self.state.mode == PlaybackMode.idle:
+            history = self.repository.list_history(limit=1)
+            if not history:
+                return "noop"
+            previous = history[0]
+            queued = self.repository.enqueue_items(
+                [
+                    NewQueueItem(
+                        source_url=previous.source_url,
+                        provider=getattr(previous, "provider", None),
+                        provider_item_id=getattr(previous, "provider_item_id", None),
+                        normalized_url=getattr(previous, "normalized_url", None)
+                        or previous.source_url,
+                        source_type=getattr(previous, "source_type", None) or "unknown",
+                        title=getattr(previous, "title", None) or previous.source_url,
+                        channel=getattr(previous, "channel", None),
+                        duration_seconds=getattr(previous, "duration_seconds", None),
+                        thumbnail_url=getattr(previous, "thumbnail_url", None),
+                    )
+                ]
+            )
+            if queued:
+                self.repository.move_item_to_front(queued[0].id)
+                self._seed_resolved_cache_from_recent(queued[0].id, previous.source_url)
+            self._request_interrupt("resume_from_stop")
+            self._notify_state_changed()
+            return "resume_last"
+
+        return "noop"
 
     def set_repeat_mode(self, mode: str) -> str:
         try:
@@ -289,9 +367,12 @@ class StreamEngine:
                     source_url=previous.source_url,
                     provider=getattr(previous, "provider", None),
                     provider_item_id=getattr(previous, "provider_item_id", None),
-                    normalized_url=previous.source_url,
-                    source_type=getattr(previous, "provider", None) or "unknown",
+                    normalized_url=getattr(previous, "normalized_url", None) or previous.source_url,
+                    source_type=getattr(previous, "source_type", None) or "unknown",
                     title=previous.title,
+                    channel=getattr(previous, "channel", None),
+                    duration_seconds=getattr(previous, "duration_seconds", None),
+                    thumbnail_url=getattr(previous, "thumbnail_url", None),
                 )
             ]
         )
@@ -359,25 +440,35 @@ class StreamEngine:
         except OSError:
             return
 
-    def _prefetch_audio_for_item(self, queue_item_id: int, source_url: str) -> None:
+    def _prefetch_audio_for_item(
+        self,
+        queue_item_id: int,
+        source_url: str,
+        *,
+        register_active: bool = False,
+    ) -> None:
         if self._get_prefetched_audio_path(queue_item_id) is not None:
+            logger.debug("Prefetch skip item %s (already cached)", queue_item_id)
             return
-        source_process = self.yt_dlp_service.spawn_audio_stream(source_url)
         temp_path = os.path.join(self._prefetched_audio_dir, f"{queue_item_id}.bin")
         logger.debug("Prefetching audio for item %s from %s to %s", queue_item_id, source_url, temp_path)
+        source_process = self.yt_dlp_service.spawn_audio_download(source_url, temp_path)
+        if register_active:
+            self._set_active_processes(None, source_process)
         try:
-            with open(temp_path, "wb") as destination:
-                while True:
-                    chunk = source_process.stdout.read(64 * 1024) if source_process.stdout is not None else b""
-                    if not chunk:
-                        break
-                    destination.write(chunk)
+            while True:
+                if register_active and (self._stop_event.is_set() or self._skip_event.is_set()):
+                    raise InterruptedError(self._consume_interrupt_reason("stop"))
+                return_code = self._process_return_code(source_process)
+                if return_code is not None:
+                    break
+                time.sleep(0.05)
+            stderr_pipe = getattr(source_process, "stderr", None)
             stderr_text = (
-                source_process.stderr.read().decode("utf-8", errors="replace").strip()
-                if source_process.stderr is not None
+                stderr_pipe.read().decode("utf-8", errors="replace").strip()
+                if stderr_pipe is not None
                 else ""
             )
-            return_code = self._process_return_code(source_process)
             if return_code != 0:
                 raise YtDlpError(stderr_text or f"yt-dlp exited with status {return_code}")
             if not os.path.exists(temp_path) or os.path.getsize(temp_path) <= 0:
@@ -390,6 +481,8 @@ class StreamEngine:
             raise
         finally:
             self._terminate_process(source_process)
+            if register_active:
+                self._set_active_processes(None, None)
 
     def _remember_recent_resolved_track(self, resolved: ResolvedTrack) -> None:
         key = resolved.normalized_url
@@ -487,6 +580,9 @@ class StreamEngine:
     def subscribe(self) -> Generator[bytes, None, None]:
         return self.hub.subscribe()
 
+    def set_pcm_listener_count_provider(self, provider: Callable[[], int] | None) -> None:
+        self._pcm_listener_count_provider = provider
+
     def playback_progress(self) -> dict[str, float | int | None]:
         elapsed_seconds: float | None = None
         if self.state.mode == PlaybackMode.playing and self.state.started_at_monotonic_seconds is not None:
@@ -507,6 +603,13 @@ class StreamEngine:
 
     def runtime_stats(self) -> dict[str, float | int | str | None]:
         progress = self.playback_progress()
+        mp3_stream_listeners = self.hub.subscriber_count()
+        pcm_stream_listeners = 0
+        if self._pcm_listener_count_provider is not None:
+            try:
+                pcm_stream_listeners = max(0, int(self._pcm_listener_count_provider()))
+            except Exception:
+                logger.debug("Failed reading PCM listener count", exc_info=True)
         with self._stats_lock:
             total_bytes_streamed = self._total_bytes_streamed
             total_chunks_streamed = self._total_chunks_streamed
@@ -520,7 +623,9 @@ class StreamEngine:
         return {
             "mode": self.state.mode.value,
             "queued_count": self.repository.queued_count(),
-            "subscriber_count": self.hub.subscriber_count(),
+            "mp3_stream_listeners": mp3_stream_listeners,
+            "pcm_stream_listeners": pcm_stream_listeners,
+            "total_listeners": mp3_stream_listeners + pcm_stream_listeners,
             "now_playing_id": self.state.now_playing_id,
             "now_playing_title": self.state.now_playing_title,
             "elapsed_seconds": progress["elapsed_seconds"],
@@ -534,6 +639,30 @@ class StreamEngine:
             "recent_cache_count": recent_cache_count,
             "prefetched_audio_count": prefetched_audio_count,
         }
+
+    def get_current_stream_url(self) -> str | None:
+        item_id = self.state.now_playing_id
+        if item_id is None:
+            return None
+
+        cached = self._get_cached_resolved_track(item_id)
+        if cached:
+            return cached.stream_url
+
+        item = self.repository.get_item(item_id)
+        if not item:
+            return None
+        return item.resolved_stream_url or item.normalized_url or item.source_url
+
+    def get_current_ffmpeg_input(self) -> str | None:
+        """Prefer prefetched on-disk audio (same as live MP3) so PCM avoids a second remote demux."""
+        item_id = self.state.now_playing_id
+        if item_id is None:
+            return None
+        prefetched = self._get_prefetched_audio_path(item_id)
+        if prefetched is not None:
+            return prefetched
+        return self.get_current_stream_url()
 
     def _record_streamed_chunk(self, chunk_size: int) -> None:
         with self._stats_lock:
@@ -568,11 +697,13 @@ class StreamEngine:
             else:
                 progress_label = f"{elapsed_seconds:.1f}s"
             logger.info(
-                "Engine stats mode=%s track=%s progress=%s listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s (%s) total_chunks=%s completed=%s skipped=%s failed=%s",
+                "Engine stats mode=%s track=%s progress=%s mp3_stream_listeners=%s pcm_stream_listeners=%s total_listeners=%s queued=%s cache=%s recent_cache=%s prefetched_audio=%s total_bytes=%s (%s) total_chunks=%s completed=%s skipped=%s failed=%s",
                 stats["mode"],
                 track_label,
                 progress_label,
-                stats["subscriber_count"],
+                stats["mp3_stream_listeners"],
+                stats["pcm_stream_listeners"],
+                stats["total_listeners"],
                 stats["queued_count"],
                 stats["cached_track_count"],
                 stats["recent_cache_count"],
@@ -710,6 +841,10 @@ class StreamEngine:
     def _run(self) -> None:
         while not self._stop_event.is_set():
             try:
+                if self._user_stopped:
+                    self._stream_idle_cycle()
+                    continue
+
                 queue_item = self.repository.dequeue_next()
                 if queue_item is None:
                     if self.state.repeat_mode == RepeatMode.all and self._repeat_cycle_items:
@@ -761,13 +896,19 @@ class StreamEngine:
         idle_start = time.monotonic()
         try:
             while not self._stop_event.is_set():
+                if self._skip_event.is_set():
+                    reason = self._consume_interrupt_reason()
+                    if reason == "resume_from_stop":
+                        return
+                    if reason == "user_stop":
+                        continue
                 chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
                 if not chunk:
                     break
                 self.hub.publish(chunk)
                 if time.monotonic() - idle_start >= self.queue_poll_seconds:
                     idle_start = time.monotonic()
-                    if self.repository.has_queued_items():
+                    if not self._user_stopped and self.repository.has_queued_items():
                         break
         finally:
             self._set_active_processes(None, None)
@@ -827,30 +968,41 @@ class StreamEngine:
                         self._set_playback_offset_seconds(seek_offset)
                         start_offset_seconds = seek_offset
 
-                        prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
                         spawn_for_source = getattr(self.ffmpeg_pipeline, "spawn_for_source", None)
+                        prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
+                        if (
+                            callable(spawn_for_source)
+                            and not prefetched_audio_path
+                            and not resolved.is_live
+                            and not self._item_uses_direct_ffmpeg(queue_item)
+                        ):
+                            self._prefetch_audio_for_item(
+                                queue_item.id,
+                                queue_item.source_url,
+                                register_active=True,
+                            )
+                            if self._skip_event.is_set():
+                                raise InterruptedError(self._consume_interrupt_reason())
+                            prefetched_audio_path = self._get_prefetched_audio_path(queue_item.id)
                         if callable(spawn_for_source) and prefetched_audio_path:
                             source_process = None
                             process = spawn_for_source(prefetched_audio_path, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
                         elif callable(spawn_for_source) and (
-                            seek_offset > 0 or self._item_uses_direct_ffmpeg(queue_item)
+                            seek_offset > 0 or resolved.is_live or self._item_uses_direct_ffmpeg(queue_item)
                         ):
                             source_process = None
                             process = spawn_for_source(resolved.stream_url, start_at_seconds=seek_offset)
                             self._set_active_processes(process, None)
                         else:
-                            source_process = self.yt_dlp_service.spawn_audio_stream(queue_item.source_url)
-                            self._set_active_processes(None, source_process)
-                            process = self.ffmpeg_pipeline.spawn_for_stdin(source_process.stdout)
-                            if source_process.stdout is not None:
-                                source_process.stdout.close()
-                            self._set_active_processes(process, source_process)
+                            raise FfmpegError("ffmpeg source playback is unavailable")
 
                         # Trigger upcoming prefetch as soon as playback pipeline is ready.
                         # Relying only on the first emitted chunk can miss/delay prefetch
                         # for some direct/local playback paths.
                         self._trigger_prefetch_upcoming_tracks()
+                        self._notify_state_changed()
+                        logger.info("Notifying state changed before first streamed chunk")
 
                         attempt_chunks_sent = 0
                         attempt_bytes_sent = 0
@@ -860,7 +1012,20 @@ class StreamEngine:
                         while not self._stop_event.is_set():
                             if self._skip_event.is_set():
                                 raise InterruptedError(self._consume_interrupt_reason())
+                            read_started = time.monotonic()
                             chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
+                            read_seconds = time.monotonic() - read_started
+                            if chunk and read_seconds >= 0.3:
+                                logger.warning(
+                                    "Slow ffmpeg read while streaming track_id=%s attempt=%s chunk_index=%s "
+                                    "read_seconds=%.3f requested_bytes=%s received_bytes=%s",
+                                    queue_item.id,
+                                    attempt,
+                                    attempt_chunks_sent,
+                                    read_seconds,
+                                    self.chunk_size,
+                                    len(chunk),
+                                )
                             if not chunk:
                                 ffmpeg_stderr_pipe = getattr(process, "stderr", None)
                                 ffmpeg_stderr_snapshot = (
@@ -884,11 +1049,6 @@ class StreamEngine:
                             attempt_chunks_sent += 1
                             if attempt_chunks_sent == 1:
                                 self._trigger_prefetch_upcoming_tracks()
-                                self._notify_state_changed()
-                                logger.info(
-                                    "Notifying state changed (attempt_chunks_sent=%s)",
-                                    attempt_chunks_sent,
-                                )
                             attempt_bytes_sent += len(chunk)
                             total_chunks_sent += 1
                             total_bytes_sent += len(chunk)
@@ -1027,6 +1187,37 @@ class StreamEngine:
                     continue
                 if reason == "stop":
                     break
+                if reason == "user_stop":
+                    logger.info(
+                        "Track %s user-stopped; re-enqueueing. streamed_bytes=%s streamed_chunks=%s",
+                        queue_item.id,
+                        total_bytes_sent,
+                        total_chunks_sent,
+                    )
+                    self.repository.mark_playback_finished(queue_item.id, status=QueueStatus.skipped)
+                    self._record_track_outcome(skipped=True)
+                    self._drop_prefetched_audio_path(queue_item.id)
+                    re_queued = self.repository.enqueue_items(
+                        [
+                            NewQueueItem(
+                                source_url=queue_item.source_url,
+                                provider=queue_item.provider,
+                                provider_item_id=queue_item.provider_item_id,
+                                normalized_url=queue_item.normalized_url,
+                                source_type=queue_item.source_type,
+                                title=queue_item.title,
+                                channel=queue_item.channel,
+                                duration_seconds=queue_item.duration_seconds,
+                                thumbnail_url=queue_item.thumbnail_url,
+                                playlist_id=queue_item.playlist_id,
+                            )
+                        ]
+                    )
+                    if re_queued:
+                        self.repository.move_item_to_front(re_queued[0].id)
+                        self._seed_resolved_cache_from_recent(re_queued[0].id, queue_item.source_url)
+                    self._notify_state_changed()
+                    return
                 logger.info(
                     "Track %s interrupted (%s). streamed_bytes=%s streamed_chunks=%s",
                     queue_item.id,
@@ -1097,7 +1288,18 @@ class StreamEngine:
             logger.exception("Failed updating playback state after stop")
 
     def _stream_paused_cycle(self) -> None:
-        while not self._stop_event.is_set() and self.state.paused:
+        while not self._stop_event.is_set():
+            if self._skip_event.is_set():
+                reason = self._consume_interrupt_reason()
+                if reason == "pause":
+                    if not self.state.paused:
+                        return
+                elif reason == "resume":
+                    return
+                else:
+                    raise InterruptedError(reason)
+            if not self.state.paused:
+                return
             try:
                 process = self.ffmpeg_pipeline.spawn_silence()
             except FfmpegError as exc:
@@ -1106,14 +1308,18 @@ class StreamEngine:
                 continue
             self._set_active_processes(process)
             try:
-                while not self._stop_event.is_set() and self.state.paused:
+                while not self._stop_event.is_set():
                     if self._skip_event.is_set():
                         reason = self._consume_interrupt_reason()
                         if reason == "pause":
+                            if not self.state.paused:
+                                return
                             continue
                         if reason == "resume":
                             return
                         raise InterruptedError(reason)
+                    if not self.state.paused:
+                        return
                     chunk = self.ffmpeg_pipeline.read_chunk(process.stdout, self.chunk_size)
                     if not chunk:
                         break
