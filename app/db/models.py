@@ -120,3 +120,13 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SendspinClient(Base):
+    __tablename__ = "sendspin_clients"
+
+    client_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    muted: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

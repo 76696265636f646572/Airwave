@@ -1,4 +1,6 @@
-from app.db.models import QueueStatus
+from datetime import datetime, timedelta, timezone
+
+from app.db.models import QueueStatus, SendspinClient
 from app.db.repository import NewQueueItem, Repository
 
 
@@ -24,6 +26,40 @@ def test_queue_ordering_and_reorder(tmp_path):
     assert next_item is not None
     assert next_item.title == "c"
     assert next_item.status == QueueStatus.playing
+
+
+def test_sendspin_client_state_persists_across_repository_instances(tmp_path):
+    db_url = f"sqlite+pysqlite:///{tmp_path}/repo_sendspin.db"
+    repo = Repository(db_url)
+    repo.init_db()
+
+    assert repo.get_sendspin_client_state("client-1") == (None, None)
+
+    repo.upsert_sendspin_client_state("client-1", name="Kitchen", volume=150, muted=True)
+
+    restarted_repo = Repository(db_url)
+    restarted_repo.init_db()
+    assert restarted_repo.get_sendspin_client_state("client-1") == (100, True)
+
+    restarted_repo.upsert_sendspin_client_state("client-1", volume=35)
+    assert restarted_repo.get_sendspin_client_state("client-1") == (35, True)
+
+
+def test_prune_sendspin_clients_removes_old_entries(tmp_path):
+    db_url = f"sqlite+pysqlite:///{tmp_path}/repo_sendspin_prune.db"
+    repo = Repository(db_url)
+    repo.init_db()
+    repo.upsert_sendspin_client_state("old", volume=20)
+    repo.upsert_sendspin_client_state("recent", volume=40)
+
+    with repo.session() as session:
+        old = session.get(SendspinClient, "old")
+        assert old is not None
+        old.updated_at = datetime.now(timezone.utc) - timedelta(days=31)
+
+    assert repo.prune_sendspin_clients(days=30) == 1
+    assert repo.get_sendspin_client_state("old") == (None, None)
+    assert repo.get_sendspin_client_state("recent") == (40, None)
 
 
 def test_replace_queued_items_marks_old_items_removed(tmp_path):

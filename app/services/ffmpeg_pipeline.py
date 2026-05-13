@@ -4,7 +4,9 @@ import json
 import re
 import subprocess
 from typing import IO
+import logging
 
+logger = logging.getLogger(__name__)
 
 class FfmpegError(RuntimeError):
     pass
@@ -251,6 +253,8 @@ class FfmpegPipeline:
                 "44100",
                 "-ac",
                 "2",
+                #   "-filter:a",
+                # "loudnorm=I=-16:TP=-1.5:LRA=11",
                 "-b:a",
                 self.bitrate,
                 "-f",
@@ -258,27 +262,67 @@ class FfmpegPipeline:
                 "pipe:1",
             ]
         )
+        logger.debug("Spawning audio source: %s", args)
         return self._spawn(args)
 
-    def spawn_for_stdin(self, stdin: IO[bytes] | None) -> subprocess.Popen[bytes]:
+    def spawn_pcm_for_source(
+        self,
+        source_url: str,
+        start_at_seconds: float = 0.0,
+        sample_rate: int = 48000,
+        channels: int = 2,
+        bit_depth: int = 16,
+    ) -> subprocess.Popen[bytes]:
+        fmt = f"s{bit_depth}le"
+        args: list[str] = []
+        if start_at_seconds > 0:
+            args.extend(["-ss", f"{float(start_at_seconds):.3f}"])
+        args.extend(
+            [
+                "-i",
+                source_url,
+                "-vn",
+                "-acodec",
+                f"pcm_{fmt}",
+                "-ar",
+                str(sample_rate),
+                "-ac",
+                str(channels),
+                # "-filter:a",
+                # "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-f",
+                fmt,
+                "pipe:1",
+            ]
+        )
+        logger.debug("Spawning PCM source: %s", args)
+        return self._spawn(args)
+
+    def spawn_pcm_silence(
+        self,
+        sample_rate: int = 48000,
+        channels: int = 2,
+        bit_depth: int = 16,
+    ) -> subprocess.Popen[bytes]:
+        fmt = f"s{bit_depth}le"
+        layout = "stereo" if channels == 2 else "mono"
         args = [
             "-re",
-            "-i",
-            "pipe:0",
-            "-vn",
-            "-acodec",
-            "libmp3lame",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-b:a",
-            self.bitrate,
             "-f",
-            "mp3",
+            "lavfi",
+            "-i",
+            f"anullsrc=channel_layout={layout}:sample_rate={sample_rate}",
+            "-acodec",
+            f"pcm_{fmt}",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-f",
+            fmt,
             "pipe:1",
         ]
-        return self._spawn(args, stdin=stdin)
+        return self._spawn(args)
 
     def spawn_silence(self) -> subprocess.Popen[bytes]:
         args = [
